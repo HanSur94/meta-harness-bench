@@ -44,6 +44,8 @@ export const SessionStep = z.object({
 	prompt: z.string().min(1),
 	/** Start a new session instead of resuming the previous one. */
 	newSession: z.boolean().default(false),
+	/** Meta-harness phase tag: design steps stop spec-only runs; untagged = setup. */
+	phase: z.enum(["design", "build"]).optional(),
 });
 export type SessionStep = z.infer<typeof SessionStep>;
 
@@ -79,6 +81,9 @@ export const CandidateEntry = z.object({
 		}),
 	/** Paths the framework creates that identify it; scrubbed before blind judging. */
 	markerPaths: z.array(z.string().min(1)).default([]),
+	/** Excluded candidates render on the board as excluded-not-ranked. */
+	excluded: z.boolean().optional(),
+	exclusionReason: z.string().optional(),
 	harnesses: z
 		.record(HarnessId, HarnessSetup)
 		.refine((h) => Object.keys(h).length > 0, {
