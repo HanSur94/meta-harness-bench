@@ -1,0 +1,10 @@
+Meta-Harness Bench — fork of natea/harness-eval.
+
+Upstream: https://github.com/natea/harness-eval (forked 2026-10-25, commit
+8814640). The upstream repository ships no license as of the fork date; its
+code is used here as-is and is not covered by this project's MIT license.
+
+Our additions (new files and the changes described in
+docs/designs/meta-harness-bench.md) are licensed MIT — see LICENSE.
+
+Existing NOTICE files in designs/ and targets/ are kept untouched.
