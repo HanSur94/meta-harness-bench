@@ -16,4 +16,11 @@ jobs:
       # tsc only: upstream does not conform to its own biome config (70 errors);
       # biome stays a local tool (`bun run lint`) until touched files are formatted.
       - run: bunx tsc --noEmit
-      - run: bun test
+      # Exclude live/e2e provider tests (docker daemon, e2b/daytona keys, long
+      # dry runs) — CI runs the fast deterministic suite; live tests run locally.
+      - run: |
+          bun test $(find tests -name '*.test.ts' \
+            ! -name 'e2e-dry.test.ts' ! -name 'e2e-dry-target.test.ts' \
+            ! -name 'live-run-durability.test.ts' ! -name 'studio-e2e.test.ts' \
+            ! -name 'studio-live-runs.test.ts' ! -name 'providers.test.ts' \
+            ! -name 'providers-pluggable.test.ts' | sort)
