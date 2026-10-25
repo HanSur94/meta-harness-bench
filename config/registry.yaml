@@ -38,6 +38,7 @@ candidates:
           - "claude plugin list | grep -A1 'superpowers@' | grep -q 'Version: 5.1.0'"
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 10
@@ -51,6 +52,7 @@ candidates:
           - "mkdir -p .agents/skills && cp -R .agents/_src/skills/. .agents/skills/ && cp -f .agents/_src/AGENTS.md ./AGENTS.md && rm -rf .agents/_src"
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 10
@@ -73,9 +75,13 @@ candidates:
           - "claude plugin list | grep -A1 'compound-engineering@' | grep -q 'Version: 3.12.0'"
         session:
           - prompt: "/ce-setup"
+            phase: design
           - prompt: "/ce-plan {{BASE_PROMPT}}"
+            phase: design
           - prompt: "/ce-work"
+            phase: build
           - prompt: "/ce-code-review"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan", "approve"]
           maxContinuations: 15
@@ -94,10 +100,15 @@ candidates:
           - "claude plugin list | grep -A1 'agent-skills@' | grep -q 'Version: 3a6fc6392823'"
         session:
           - prompt: "/agent-skills:spec {{BASE_PROMPT}}"
+            phase: design
           - prompt: "/agent-skills:plan"
+            phase: design
           - prompt: "/agent-skills:build"
+            phase: build
           - prompt: "/agent-skills:test"
+            phase: build
           - prompt: "/agent-skills:review"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 15
@@ -111,6 +122,7 @@ candidates:
           - "mkdir -p .agents/skills && cp -R .agents/_src/skills/. .agents/skills/ && cp -f .agents/_src/AGENTS.md ./AGENTS.md && rm -rf .agents/_src"
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 15
@@ -128,8 +140,11 @@ candidates:
         session:
           - prompt: "/gsd-new-project --auto {{BASE_PROMPT}}"
           - prompt: "/gsd-plan-phase"
+            phase: design
           - prompt: "/gsd-execute-phase"
+            phase: build
           - prompt: "/gsd-verify-work"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 20
@@ -142,8 +157,11 @@ candidates:
         session:
           - prompt: "$gsd-new-project --auto {{BASE_PROMPT}}"
           - prompt: "$gsd-plan-phase"
+            phase: design
           - prompt: "$gsd-execute-phase"
+            phase: build
           - prompt: "$gsd-verify-work"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 20
@@ -163,6 +181,7 @@ candidates:
         install: []
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue"]
           maxContinuations: 10
@@ -192,8 +211,11 @@ candidates:
           - "test -d \"$HOME/.claude/skills/gstack\" && git -C \"$HOME/.claude/skills/gstack\" rev-parse --short HEAD | grep -q '11de390'"
         session:
           - prompt: "/autoplan {{BASE_PROMPT}}"
+            phase: design
           - prompt: "proceed — implement the plan in full"
+            phase: build
           - prompt: "/review"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 15
@@ -223,6 +245,7 @@ candidates:
           - "claude plugin list | grep -q 'ruflo-core@'"
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue with the plan"]
           maxContinuations: 10
@@ -243,6 +266,7 @@ candidates:
         install: []
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue"]
           maxContinuations: 10
@@ -250,6 +274,7 @@ candidates:
         install: []
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue"]
           maxContinuations: 10
@@ -257,6 +282,231 @@ candidates:
         install: []
         session:
           - prompt: "{{BASE_PROMPT}}"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue"]
+          maxContinuations: 10
+
+  # EGM (google/elephant-goldfish-model). Elephant drafts a living design doc
+  # under docs/designs/<feature>.md; the Goldfish swarm stress-tests it. The
+  # design session follows the framework's quickstart (/egm: prefix is the
+  # Claude Code form per the pinned README), then a FRESH reference-implementer
+  # session (newSession) implements the approved spec. Pin = main HEAD
+  # (2026-10-24); the repo ships no tags.
+  - id: egm
+    name: Elephant-Goldfish Model (EGM)
+    repo: https://github.com/google/elephant-goldfish-model
+    pinnedVersion: 3d0b34821ce88ad328b0c9bf0e06d7eb5f1cd669
+    markerPaths:
+      - docs/designs/
+    harnesses:
+      claude-code:
+        install:
+          - "git config --global url.https://github.com/.insteadOf git@github.com: && git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/"
+          - claude plugin marketplace add google/elephant-goldfish-model
+          - claude plugin install egm@egm
+          - "claude plugin list | grep -q 'egm@'"
+        session:
+          - prompt: "/egm:egm-brainstorm {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/egm:egm-draft"
+            phase: design
+          - prompt: "/egm:egm-review docs/designs/<feature>.md (the design doc just drafted; <feature> is the eval target slug)"
+            phase: design
+          - prompt: "Implement the design in docs/designs/<feature>.md exactly as specified, where <feature> is the eval target slug."
+            phase: build
+            newSession: true
+        continuation:
+          allowlist: ["proceed", "continue with the plan"]
+          maxContinuations: 15
+
+  # BMad Method (bmad-code-org/BMAD-METHOD). Stable v6.12 line, npm installer
+  # pinned to 6.12.4. The v6.12 skill names (bmad-brainstorming, bmad-prd,
+  # bmad-architecture, bmad-create-epics-and-stories, bmad-build) differ from
+  # the retired v4/v5 slash-command names. Installer needs Node 20.12+,
+  # Python 3.10+ and uv in the sandbox image.
+  - id: bmad
+    name: BMad Method
+    repo: https://github.com/bmad-code-org/BMAD-METHOD
+    pinnedVersion: 6.12.4
+    markerPaths:
+      - docs/
+      - _bmad/
+    harnesses:
+      claude-code:
+        install:
+          - npx --yes bmad-method@6.12.4 install
+          - "test -d _bmad"
+        session:
+          - prompt: "/bmad-brainstorming {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/bmad-prd"
+            phase: design
+          - prompt: "/bmad-architecture"
+            phase: design
+          - prompt: "/bmad-create-epics-and-stories"
+            phase: design
+          - prompt: "/bmad-build"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue with the plan", "approve"]
+          maxContinuations: 15
+
+  # Spec Kit (github/spec-kit). specify-cli 1.2.3 (== release tag v1.2.3).
+  # SDD flow from the pinned README: constitution -> specify -> plan -> tasks
+  # -> implement. Artifacts land under .specify/.
+  - id: spec-kit
+    name: Spec Kit
+    repo: https://github.com/github/spec-kit
+    pinnedVersion: v1.2.3
+    markerPaths:
+      - .specify/
+    harnesses:
+      claude-code:
+        install:
+          - uv tool install specify-cli==1.2.3
+          - specify init --here --integration claude --non-interactive
+          - "test -d .specify"
+        session:
+          - prompt: "/speckit.constitution Create principles focused on code quality, testing, and maintainability."
+            phase: design
+          - prompt: "/speckit.specify {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/speckit.plan"
+            phase: design
+          - prompt: "/speckit.tasks"
+            phase: design
+          - prompt: "/speckit.implement"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue with the plan"]
+          maxContinuations: 15
+
+  # OpenSpec (Fission-AI/OpenSpec). npm @fission-ai/openspec 1.15.0.
+  # Two-command flow: /opsx:propose writes openspec/changes/<name>/, /opsx:apply
+  # implements the tasks. `openspec init` is interactive; the sandbox snapshot
+  # should run it with the claude-code tool preselected.
+  - id: openspec
+    name: OpenSpec
+    repo: https://github.com/Fission-AI/OpenSpec
+    pinnedVersion: 1.15.0
+    markerPaths:
+      - openspec/
+    harnesses:
+      claude-code:
+        install:
+          - npm install -g @fission-ai/openspec@1.15.0
+          - openspec init
+        session:
+          - prompt: "/opsx:propose {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/opsx:apply"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue with the plan"]
+          maxContinuations: 15
+
+  # Spec-Flow (marcusgoll/Spec-Flow). npm spec-flow pinned to 11.9.3; the
+  # init copies the workflow into .claude/ + .spec-flow/. Phase commands from
+  # the pinned README: /spec -> /plan -> /tasks (design) -> /implement (build).
+  - id: spec-flow
+    name: Spec-Flow
+    repo: https://github.com/marcusgoll/Spec-Flow
+    pinnedVersion: 11.9.3
+    markerPaths:
+      - .spec-flow/
+      - specs/
+    harnesses:
+      claude-code:
+        install:
+          - npx --yes spec-flow@11.9.3 init
+          - "test -d .spec-flow && test -d .claude/commands"
+        session:
+          - prompt: "/spec {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/plan"
+            phase: design
+          - prompt: "/tasks"
+            phase: design
+          - prompt: "/implement"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue with the plan"]
+          maxContinuations: 15
+
+  # Spec Kitty (spec-kitty/spec-kitty). PyPI spec-kitty-cli pinned to stable
+  # 3.2.7 (4.x is prerelease). Repo-native mission artifacts under
+  # kitty-specs/; implementation runs in isolated git worktrees (.worktrees/).
+  - id: spec-kitty
+    name: Spec Kitty
+    repo: https://github.com/spec-kitty/spec-kitty
+    pinnedVersion: 3.2.7
+    markerPaths:
+      - kitty-specs/
+      - .worktrees/
+    harnesses:
+      claude-code:
+        install:
+          - pipx install spec-kitty-cli==3.2.7
+          - spec-kitty init . --ai claude
+          - spec-kitty verify-setup
+        session:
+          - prompt: "/spec-kitty.charter"
+          - prompt: "/spec-kitty.specify {{BASE_PROMPT}}"
+            phase: design
+          - prompt: "/spec-kitty.plan"
+            phase: design
+          - prompt: "/spec-kitty.tasks"
+            phase: design
+          - prompt: "Run `spec-kitty next --agent claude` and implement the mission's work packages, then run /spec-kitty.review and /spec-kitty.accept."
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue with the plan", "accept"]
+          maxContinuations: 15
+
+  # Kiro (Amazon). Excluded: the harness is the closed-source Kiro IDE/CLI
+  # product (kiro.dev) — the public repo is an issue tracker, so there is no
+  # installable framework for the bench's claude-code/codex harnesses. Pin =
+  # repo main HEAD; install is the repo clone at that SHA (provenance only).
+  - id: kiro
+    name: Kiro
+    repo: https://github.com/kirodotdev/Kiro
+    pinnedVersion: bfe7ff30d9b21e583566c844d75e3dd2b572e2c7
+    excluded: true
+    exclusionReason: "IDE-locked harness"
+    markerPaths: []
+    harnesses:
+      claude-code:
+        install:
+          - "git clone --single-branch https://github.com/kirodotdev/Kiro.git \"$HOME/kiro\""
+          - "git -C \"$HOME/kiro\" checkout -q bfe7ff30d9b21e583566c844d75e3dd2b572e2c7"
+        session:
+          - prompt: "{{BASE_PROMPT}}"
+            phase: build
+        continuation:
+          allowlist: ["proceed", "continue"]
+          maxContinuations: 10
+
+  # Reversa (sandeco/reversa). Excluded: its entry workflow reverse-engineers
+  # specs FROM an existing legacy codebase, which no V1 target provides
+  # (greenfield PRDs) — needs the legacy-codebase target type (v2). Pin =
+  # git tag v1.2.57. Install is interactive; listed for provenance.
+  - id: reversa
+    name: Reversa
+    repo: https://github.com/sandeco/reversa
+    pinnedVersion: v1.2.57
+    excluded: true
+    exclusionReason: "requires a legacy-codebase target type (v2)"
+    markerPaths:
+      - .reversa/
+      - _reversa_sdd/
+    harnesses:
+      claude-code:
+        install:
+          - npx --yes reversa@1.2.57 install
+        session:
+          - prompt: "/reversa {{BASE_PROMPT}}"
+            phase: build
         continuation:
           allowlist: ["proceed", "continue"]
           maxContinuations: 10
