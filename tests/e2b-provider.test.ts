@@ -56,7 +56,7 @@ describe("e2b preflight failure paths", () => {
 		const p = createProvider("e2b", { e2bTier: "hobby" })!;
 		// hobby cap = 1h; 50m trial + 15m default setup margin = 65m > 60m → throws
 		// at the tier gate, before any Sandbox.create.
-		await expect(p.preflight(ctx(50 * 60 * 1000))).rejects.toThrow(
+		await expect(p.preflight!(ctx(50 * 60 * 1000))).rejects.toThrow(
 			/tier max sandbox lifetime/,
 		);
 	});
@@ -66,7 +66,7 @@ describe("e2b preflight failure paths", () => {
 		const p = createProvider("e2b", { e2bTier: "pro" })!;
 		// pro cap = 24h; the same 50m budget clears the tier gate, so preflight
 		// proceeds to the template probe (mocked to throw) — NOT the tier error.
-		await expect(p.preflight(ctx(50 * 60 * 1000))).rejects.not.toThrow(
+		await expect(p.preflight!(ctx(50 * 60 * 1000))).rejects.not.toThrow(
 			/tier max sandbox lifetime/,
 		);
 	});
@@ -75,7 +75,7 @@ describe("e2b preflight failure paths", () => {
 		process.env[KEY] = "dummy-key";
 		const p = createProvider("e2b", { e2bTier: "hobby" })!;
 		// Under the hobby cap → reaches the (mocked, throwing) Sandbox.create.
-		await expect(p.preflight(ctx(10 * 60 * 1000))).rejects.toThrow(
+		await expect(p.preflight!(ctx(10 * 60 * 1000))).rejects.toThrow(
 			/build it per infra\/e2b-template/,
 		);
 	});
