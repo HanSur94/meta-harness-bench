@@ -142,6 +142,10 @@ profiles:
     baseUrl: https://api.deepseek.com/anthropic
     authEnv: DEEPSEEK_API_KEY
     authKind: auth-token
+    # DeepSeek list price (peak rate = upper bound), $/Mtok.
+    pricing:
+      inputPerMtokUsd: 1.32
+      outputPerMtokUsd: 3.96
 
   - name: deepseek-flash
     provider: deepseek
@@ -150,6 +154,9 @@ profiles:
     baseUrl: https://api.deepseek.com/anthropic
     authEnv: DEEPSEEK_API_KEY
     authKind: auth-token
+    pricing:
+      inputPerMtokUsd: 0.30
+      outputPerMtokUsd: 1.20
 
   # --- OpenAI via the Codex CLI harness (transport: codex) ---
   # Codex is model-agnostic; this profile drives its built-in OpenAI provider.
