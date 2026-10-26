@@ -122,10 +122,22 @@ async function judgeOneSample(
 		const results: Anthropic.ToolResultBlockParam[] = [];
 		for (const use of toolUses) {
 			if (use.name === "record_score") {
-				const input = use.input as { score: number; justification: string };
+				const input = use.input as { score?: unknown; justification?: unknown };
+				const raw = Number(input.score);
+				if (!Number.isFinite(raw)) {
+					// Malformed score (missing/NaN): refuse it and ask again instead
+					// of poisoning the sample with NaN.
+					results.push({
+						type: "tool_result",
+						tool_use_id: use.id,
+						content:
+							"record_score failed: score must be a finite number 0-10. Call record_score again with a valid score.",
+					});
+					continue;
+				}
 				return {
-					score: Math.max(0, Math.min(10, Number(input.score))),
-					justification: String(input.justification),
+					score: Math.max(0, Math.min(10, raw)),
+					justification: String(input.justification ?? ""),
 				};
 			}
 			const input = use.input as { command: string };
