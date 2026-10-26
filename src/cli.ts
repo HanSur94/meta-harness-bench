@@ -196,6 +196,13 @@ async function cmdRun(): Promise<void> {
 	const defaults = existsSync(DEFAULTS_PATH)
 		? (parse(readFileSync(DEFAULTS_PATH, "utf8")) as Record<string, unknown>)
 		: {};
+	// --config <file>: extra defaults merged over run.defaults.yaml (e.g. the
+	// pilot file). Unknown keys are stripped by RunConfig, so docs-only keys
+	// such as workerModel are ignored rather than crashing.
+	const configPath = arg("config");
+	const fileDefaults = configPath
+		? (parse(readFileSync(configPath, "utf8")) as Record<string, unknown>)
+		: {};
 	// --trial-minutes overrides the per-trial wall-clock cap (the default comes
 	// from run.defaults.yaml's budget block). Applies to every provider, not
 	// just the cloud preflight.
@@ -214,9 +221,14 @@ async function cmdRun(): Promise<void> {
 	const targetName = arg("target") ?? "symphony-daemon";
 	const config = RunConfig.parse({
 		...defaults,
+		...fileDefaults,
 		target: targetName,
 		candidates: (
-			arg("candidates") ?? registry.candidates.map((c) => c.id).join(",")
+			arg("candidates") ??
+			registry.candidates
+				.filter((c) => !c.excluded)
+				.map((c) => c.id)
+				.join(",")
 		).split(","),
 		harness: arg("harness") ?? (defaults.harness as string | undefined),
 		trialsPerCandidate: Number(
@@ -398,11 +410,22 @@ async function cmdRun(): Promise<void> {
 
 	if (flag("grade")) {
 		const driver = arg("driver") === "sdk" ? "sdk" : "cc";
+		// The judge profile's route/credentials were never applied on the judge
+		// path (drift 2026-10-26): export them so the SDK/CC drivers pick the
+		// right endpoint and auth for the configured judge profile.
+		if (judgeProfile.baseUrl) {
+			process.env.ANTHROPIC_BASE_URL = judgeProfile.baseUrl;
+			if (judgeProfile.authKind === "auth-token") {
+				process.env.ANTHROPIC_AUTH_TOKEN =
+					process.env[judgeProfile.authEnv ?? ""] ?? "";
+				process.env.ANTHROPIC_API_KEY = "";
+			}
+		}
 		await gradeTrials(trials, {
 			target,
 			design,
 			registry,
-			judgeModel: config.judgeModel,
+			judgeModel: judgeProfile.modelId ?? config.judgeModel,
 			runDir,
 			driver,
 			specOnly: config.specOnly,

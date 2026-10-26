@@ -13,14 +13,14 @@
 # Worker: deepseek-flash (cheap, drives the bulk); judge: kimi-k3.1-pro (cross-vendor).
 # Judge route: OpenRouter (moonshotai/kimi-k3.1-pro) — different vendor from the worker.
 # Worker route: DeepSeek API direct (api.deepseek.com/anthropic).
-# Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree
+# Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree --trial-minutes 50
 
 target: symphony-daemon
 candidates: [egm, gsd]
 trialsPerCandidate: 3
 provider: worktree
 harness: claude-code
-workerModel: deepseek-flash
+model: deepseek-flash
 judgeModel: kimi-k3.1-pro
 
 budget:
