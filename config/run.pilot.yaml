@@ -1,0 +1,36 @@
+# Pilot run — gate to the full 16-candidate matrix.
+#
+# Go/no-go criteria (docs/designs/meta-harness-bench.md, Technical Plan component 10):
+#   (a) all 6 trials complete without infra-fail
+#   (b) spec-quality scores produced; >=2 of 5 criterion medians differ by >=1.0
+#       between EGM and GSD; specQuality direction matches adherence
+#       (weak signal at N=2; full calibration deferred to the full matrix)
+#   (c) total pilot cost <= $50 (line items: 6 worker trials + judge passes,
+#       recorded in the pilot close-out)
+#   (d) a noise-band value is recorded
+# Decision owner: Hannes. Results alone do not decide.
+#
+# Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree
+
+target: symphony-daemon
+candidates: [egm, gsd]
+trialsPerCandidate: 3
+provider: worktree
+harness: claude-code
+workerModel: claude-opus-4-6
+judgeModel: claude-sonnet-4-6
+
+budget:
+  trialWallClockMs: 7200000
+  trialCostUsd: 8
+  runCostUsd: 50
+
+weights:
+  prdAdherence: 0.35
+  codeQuality: 0.20
+  specQuality: 0.15
+  speed: 0.15
+  tokenSpend: 0.15
+
+noiseBand: 0
+specOnly: false
