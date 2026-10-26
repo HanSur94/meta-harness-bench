@@ -75,6 +75,7 @@ export function Leaderboard() {
 				dims: {
 					prdAdherence: mean((s) => s.dimensions.prdAdherence),
 					codeQuality: mean((s) => s.dimensions.codeQuality),
+					specQuality: mean((s) => s.dimensions.specQuality),
 					speed: mean((s) => s.dimensions.speed),
 					tokenSpend: mean((s) => s.dimensions.tokenSpend),
 				} as Record<keyof Weights, number>,

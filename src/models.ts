@@ -48,6 +48,8 @@ export const ModelProfile = z
 		authKind: AuthKind,
 		/** Optional $/Mtok pricing for token-only providers. */
 		pricing: ModelPricing.optional(),
+		/** Dated provider snapshot id, when the profile pins one (drift guard). */
+		snapshotId: z.string().optional(),
 	})
 	.refine((p) => !(p.authKind === "auth-token" && !p.baseUrl), {
 		message:
@@ -280,6 +282,7 @@ export function toModelRef(p: ModelProfile): {
 	provider: string;
 	modelId: string;
 	endpointHost: string | null;
+	snapshotId?: string;
 } {
 	let endpointHost: string | null = null;
 	if (p.baseUrl) {
@@ -289,7 +292,13 @@ export function toModelRef(p: ModelProfile): {
 			endpointHost = p.baseUrl;
 		}
 	}
-	return { name: p.name, provider: p.provider, modelId: p.modelId, endpointHost };
+	return {
+		name: p.name,
+		provider: p.provider,
+		modelId: p.modelId,
+		endpointHost,
+		...(p.snapshotId ? { snapshotId: p.snapshotId } : {}),
+	};
 }
 
 /**

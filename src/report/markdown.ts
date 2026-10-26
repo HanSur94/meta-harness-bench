@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { noiseBand, rankGaps } from "../grading/scoring";
 import type { DimensionStats, RunResults } from "../types";
 
 function fmtMs(ms: number): string {
@@ -23,6 +24,11 @@ export function renderScorecard(r: RunResults): string {
 	lines.push(
 		`Harness **${r.config.harness}** · worker model **${workerLabel}** · provider **${r.config.provider}** · ${r.config.trialsPerCandidate} trial(s)/candidate`,
 	);
+	if (r.mode === "spec-only") {
+		lines.push(
+			"> **Spec-only run:** specQuality is the only scored dimension; PRD adherence, code quality, speed and token spend are n/a.",
+		);
+	}
 	lines.push("");
 
 	// Cross-model caveat badges (model-registry): judge bias and cost basis.
@@ -52,30 +58,36 @@ export function renderScorecard(r: RunResults): string {
 
 	lines.push("## Ranking");
 	lines.push("");
-	lines.push(
-		"| # | Candidate | Composite | PRD adherence (40%) | Code quality (25%) | Speed (17.5%) | Token spend (17.5%) | Trials | Flags |",
-	);
-	lines.push(
-		"|---|-----------|-----------|---------------------|--------------------|---------------|---------------------|--------|-------|",
-	);
 	const w = r.weights;
-	const headerWeights = [
-		w.prdAdherence,
-		w.codeQuality,
-		w.speed,
-		w.tokenSpend,
-	].map((x) => `${(x * 100).toFixed(1)}%`);
-	// Replace default header weights if reconfigured
-	if (headerWeights.join() !== "40.0%,25.0%,17.5%,17.5%") {
-		lines[lines.length - 2] =
-			`| # | Candidate | Composite | PRD adherence (${headerWeights[0]}) | Code quality (${headerWeights[1]}) | Speed (${headerWeights[2]}) | Token spend (${headerWeights[3]}) | Trials | Flags |`;
-	}
+	const pct = (x: number | undefined) => `${((x ?? 0) * 100).toFixed(1)}%`;
+	lines.push(
+		`| # | Candidate | Composite | PRD adherence (${pct(w.prdAdherence)}) | Code quality (${pct(w.codeQuality)}) | Spec quality (${pct(w.specQuality)}) | Speed (${pct(w.speed)}) | Token spend (${pct(w.tokenSpend)}) | Trials | Flags |`,
+	);
+	lines.push(
+		"|---|-----------|-----------|---------------------|--------------------|--------------------|---------------|---------------------|--------|-------|",
+	);
 	r.scores.forEach((s, i) => {
 		lines.push(
-			`| ${i + 1} | **${s.candidate}** | **${s.composite}** | ${s.dimensions.prdAdherence} | ${s.dimensions.codeQuality} | ${s.dimensions.speed} | ${s.dimensions.tokenSpend} | ${s.trialsCounted} | ${s.rightCensored ? "right-censored (capped trials)" : ""} |`,
+			`| ${i + 1} | **${s.candidate}** | **${s.composite}** | ${s.dimensions.prdAdherence} | ${s.dimensions.codeQuality} | ${s.dimensions.specQuality} | ${s.dimensions.speed} | ${s.dimensions.tokenSpend} | ${s.trialsCounted} | ${s.rightCensored ? "right-censored (capped trials)" : ""} |`,
 		);
 	});
 	lines.push("");
+	// Composite ranking uses the noise band (Definitions); isInconclusive stays
+	// for dimension-level spread.
+	if (r.scores.length >= 2) {
+		const band = noiseBand(r.scores, r.config.noiseBand);
+		lines.push(
+			`Noise band: ±${band.toFixed(2)} composite points (pooled stddev across candidates${r.config.noiseBand > 0 ? `, floor ${r.config.noiseBand}` : ""}).`,
+		);
+		for (const gap of rankGaps(r.scores, band)) {
+			if (!gap.significant) {
+				lines.push(
+					`- ${gap.a} vs ${gap.b}: no significant difference (gap ${gap.gap} ≤ band ${band.toFixed(2)}).`,
+				);
+			}
+		}
+		lines.push("");
+	}
 
 	lines.push("## Dimension detail");
 	lines.push("");
@@ -86,6 +98,9 @@ export function renderScorecard(r: RunResults): string {
 			`- **PRD adherence** (Graded Score 0–100): ${fmtStats(s.stats.prdAdherence)}`,
 		);
 		lines.push(`- **Code quality** (0–100): ${fmtStats(s.stats.codeQuality)}`);
+		lines.push(
+			`- **Spec quality** (0–100, mean of 5 criterion medians ×10): ${fmtStats(s.stats.specQuality)}`,
+		);
 		lines.push(
 			`- **Agent working time**: ${fmtStats(s.stats.speed, fmtMs)} → normalized ${s.dimensions.speed}`,
 		);
@@ -139,7 +154,7 @@ export function renderScorecard(r: RunResults): string {
 	lines.push(`- PRD SHA-256: \`${r.prdSha256}\``);
 	lines.push(`- Test plan SHA-256: \`${r.testPlanSha256 ?? "n/a"}\``);
 	lines.push(
-		`- Weights: adherence ${w.prdAdherence}, quality ${w.codeQuality}, speed ${w.speed}, spend ${w.tokenSpend}`,
+		`- Weights: adherence ${w.prdAdherence}, quality ${w.codeQuality}, spec ${w.specQuality ?? 0}, speed ${w.speed}, spend ${w.tokenSpend}`,
 	);
 	if (r.workerModel) {
 		lines.push(

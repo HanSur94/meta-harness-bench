@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { RunResults, type TrialGrades } from "../types";
+import { RunResults, type TrialGrades, upgradeResultsV1 } from "../types";
 
 export interface RunIndexEntry {
 	runId: string;
@@ -12,7 +12,8 @@ export interface RunIndexEntry {
 	error?: string;
 }
 
-const SUPPORTED_SCHEMA_VERSIONS = new Set([1]);
+// v1 = historical passthrough (normalized on read), v2 = current.
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2]);
 
 interface CacheSlot {
 	mtimeMs: number;
@@ -70,7 +71,7 @@ export function loadRunIndex(runsDir = "runs"): RunIndexEntry[] {
 					dir,
 					supported: true,
 					schemaVersion: raw.schemaVersion,
-					results: RunResults.parse(raw),
+					results: RunResults.parse(upgradeResultsV1(raw)),
 				};
 			}
 		} catch (err) {

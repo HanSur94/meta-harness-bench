@@ -29,6 +29,7 @@ import { judgeQualityCC, runEvaluatorCC } from "../src/grading/cc-driver";
 import { runEvaluator } from "../src/grading/evaluator";
 import { judgeQuality } from "../src/grading/judge";
 import { scrubWorkspace } from "../src/grading/scrub";
+import { judgeSpec } from "../src/grading/spec-judge";
 import { loadRegistry } from "../src/registry";
 import { loadTarget, startFixtures, stopFixtures } from "../src/targets";
 
@@ -49,6 +50,10 @@ const workspace = join(trialDir, "workspace");
 if (!existsSync(workspace)) throw new Error(`no workspace at ${workspace}`);
 
 const registry = loadRegistry("config/registry.yaml");
+const prov = JSON.parse(
+	readFileSync(join(trialDir, "provenance.json"), "utf8"),
+) as { prdSha256?: string; candidate?: string };
+const candidate = registry.candidates.find((c) => c.id === prov.candidate);
 // Resolve the target from the trial's recorded PRD hash so we grade against the
 // run's ACTUAL test plan — not a hardcoded default (a wrong default grades a
 // rest-api build against the symphony plan, producing a meaningless score).
@@ -56,9 +61,6 @@ const registry = loadRegistry("config/registry.yaml");
 const targetIdx = process.argv.indexOf("--target");
 let targetName = targetIdx >= 0 ? (process.argv[targetIdx + 1] as string) : "";
 if (!targetName) {
-	const prov = JSON.parse(
-		readFileSync(join(trialDir, "provenance.json"), "utf8"),
-	) as { prdSha256?: string };
 	for (const d of readdirSync("targets")) {
 		if (!existsSync(join("targets", d, "target.yaml"))) continue;
 		try {
@@ -194,10 +196,33 @@ try {
 		);
 	}
 
+	// Spec-quality instrument: RAW markerPaths artifacts (never the scrubbed
+	// copy). Optional — a failure here leaves the dimension null.
+	let specQuality = null;
+	try {
+		specQuality = await judgeSpec({
+			model: judgeModel,
+			workspaceDir: workspace,
+			markerPaths: candidate?.markerPaths ?? [],
+		});
+		console.log(`[grade] spec quality: ${specQuality.overall}`);
+	} catch (err) {
+		console.log(
+			`[grade] spec judge failed (${String(err).slice(0, 120)}); leaving specQuality null`,
+		);
+	}
+
 	writeFileSync(
 		join(trialDir, "grades.json"),
 		JSON.stringify(
-			{ trialId, adherence, quality, integration: null, gradingDriver: driver },
+			{
+				trialId,
+				adherence,
+				quality,
+				specQuality,
+				integration: null,
+				gradingDriver: driver,
+			},
 			null,
 			2,
 		),

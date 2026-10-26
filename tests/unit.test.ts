@@ -444,18 +444,25 @@ describe("normalization and composite (8.1)", () => {
 		const w: Weights = {
 			prdAdherence: 0.4,
 			codeQuality: 0.25,
+			specQuality: 0,
 			speed: 0.175,
 			tokenSpend: 0.175,
 		};
 		expect(
 			composite(
-				{ prdAdherence: 100, codeQuality: 100, speed: 100, tokenSpend: 100 },
+				{
+					prdAdherence: 100,
+					codeQuality: 100,
+					specQuality: 100,
+					speed: 100,
+					tokenSpend: 100,
+				},
 				w,
 			),
 		).toBe(100);
 		expect(
 			composite(
-				{ prdAdherence: 50, codeQuality: 0, speed: 0, tokenSpend: 0 },
+				{ prdAdherence: 50, codeQuality: 0, specQuality: 0, speed: 0, tokenSpend: 0 },
 				w,
 			),
 		).toBe(20);
@@ -604,10 +611,17 @@ describe("misc (8.1)", () => {
 			candidate,
 			harness: "claude-code" as const,
 			model: "m",
-			dimensions: { prdAdherence: 0, codeQuality: 0, speed: 0, tokenSpend: 0 },
+			dimensions: {
+				prdAdherence: 0,
+				codeQuality: 0,
+				specQuality: 0,
+				speed: 0,
+				tokenSpend: 0,
+			},
 			stats: {
 				prdAdherence: stats([0]),
 				codeQuality: stats([0]),
+				specQuality: stats([0]),
 				speed: stats([0]),
 				tokenSpend: stats([0]),
 			},

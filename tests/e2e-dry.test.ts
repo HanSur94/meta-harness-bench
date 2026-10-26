@@ -139,6 +139,7 @@ describe("e2e dry run (task 8.2)", () => {
 		}));
 		trial.grades = {
 			trialId: trial.provenance.trialId,
+			specQuality: null,
 			adherence: scoreAdherence(plan, stepResults),
 			quality: {
 				judgeModel: "dry-judge",
@@ -194,7 +195,7 @@ describe("e2e dry run (task 8.2)", () => {
 		const scorecardPath = writeScorecard(runDir, results);
 
 		const parsed = JSON.parse(readFileSync(resultsPath, "utf8"));
-		expect(parsed.schemaVersion).toBe(1);
+		expect(parsed.schemaVersion).toBe(2);
 		expect(parsed.scores[0].candidate).toBe("superpowers");
 		expect(parsed.scores[0].dimensions.prdAdherence).toBeGreaterThan(50);
 		expect(parsed.scores[0].dimensions.speed).toBe(100); // single candidate → degenerate 100
@@ -212,6 +213,7 @@ describe("e2e dry run (task 8.2)", () => {
 			weights: {
 				prdAdherence: 0.7,
 				codeQuality: 0.1,
+				specQuality: 0,
 				speed: 0.1,
 				tokenSpend: 0.1,
 			},

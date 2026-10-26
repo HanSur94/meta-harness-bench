@@ -260,6 +260,10 @@ export async function executeRun(
 			trials,
 			workerModel: toModelRef(inp.workerProfile),
 			judgeModel: toModelRef(inp.judgeProfile),
+			judgeModels: {
+				codeJudge: toModelRef(inp.judgeProfile),
+				specJudge: toModelRef(inp.judgeProfile),
+			},
 			crossVendorJudge:
 				inp.workerProfile.provider !== inp.judgeProfile.provider,
 			costSource: dryRun ? "tokens-only" : "harness-reported",

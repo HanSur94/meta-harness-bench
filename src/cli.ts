@@ -17,7 +17,7 @@
  *       (with --grade, on UI targets) scores design adherence. --grade
  *       additionally runs evaluator+judge (API spend).
  *
- *   bun run src/cli.ts report <run-dir> [--weights a,q,s,t]
+ *   bun run src/cli.ts report <run-dir> [--weights a,q,s,t[,spec]]
  *       (Re)generate results.json + scorecard.md from stored trials.
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -300,6 +300,7 @@ async function cmdRun(): Promise<void> {
 		trials,
 		workerModel: workerModelRef,
 		judgeModel: judgeModelRef,
+		judgeModels: { codeJudge: judgeModelRef, specJudge: judgeModelRef },
 		crossVendorJudge: crossVendor,
 		costSource,
 	});
@@ -385,7 +386,7 @@ async function cmdInit(): Promise<void> {
 async function cmdReport(): Promise<void> {
 	const runDir = process.argv[3];
 	if (!runDir || !existsSync(runDir))
-		throw new Error("usage: report <run-dir> [--weights a,q,s,t]");
+		throw new Error("usage: report <run-dir> [--weights a,q,s,t[,spec]]");
 	const prior = JSON.parse(readFileSync(join(runDir, "results.json"), "utf8"));
 	const trials: TrialResult[] = prior.trials;
 	// Reattach grades persisted after the original results were written.
@@ -403,10 +404,13 @@ async function cmdReport(): Promise<void> {
 	let weights: Weights | undefined;
 	const w = arg("weights");
 	if (w) {
-		const [a, q, s, t] = w.split(",").map(Number);
+		// a,q,s,t[,spec] — the fifth value is optional so legacy 4-way weights
+		// (no spec-instrument weight) still work.
+		const [a, q, s, t, spec] = w.split(",").map(Number);
 		weights = Weights.parse({
 			prdAdherence: a,
 			codeQuality: q,
+			specQuality: spec,
 			speed: s,
 			tokenSpend: t,
 		});
@@ -424,6 +428,7 @@ async function cmdReport(): Promise<void> {
 		// must not drop the worker/judge profiles or caveats).
 		workerModel: prior.workerModel,
 		judgeModel: prior.judgeModel,
+		judgeModels: prior.judgeModels,
 		crossVendorJudge: prior.crossVendorJudge,
 		costSource: prior.costSource,
 	});

@@ -13,6 +13,7 @@ import { scoreDesignAdherence } from "../grading/design-adherence";
 import { runEvaluator } from "../grading/evaluator";
 import { judgeQuality } from "../grading/judge";
 import { scrubWorkspace } from "../grading/scrub";
+import { judgeSpec } from "../grading/spec-judge";
 import type { LoadedTarget } from "../targets";
 import { startFixtures, stopFixtures } from "../targets";
 import type { Registry, TrialGrades, TrialResult } from "../types";
@@ -162,6 +163,32 @@ export async function gradeTrials(
 		cleanupIsolated();
 		const { adherence, quality } = graded;
 
+		// Spec-quality instrument (3rd grader): the RAW workspace at this
+		// candidate's markerPaths — never the scrubbed copy. Runs after the
+		// budgeted code grading so a slow/failed spec judge leaves the other
+		// grades intact (null + note instead of losing the trial).
+		// ponytail: SDK transport only — a `--driver cc` run still needs
+		// ANTHROPIC_API_KEY for this pass. Add a CC variant when the pilot runs
+		// cc-only and the API account is empty.
+		let specQuality: Awaited<ReturnType<typeof judgeSpec>> | null = null;
+		try {
+			const entry = registry.candidates.find(
+				(c) => c.id === trial.provenance.candidate,
+			);
+			specQuality = await judgeSpec({
+				model: judgeModel,
+				workspaceDir: workspace,
+				markerPaths: entry?.markerPaths ?? [],
+			});
+			log(
+				`  spec quality: ${specQuality.overall} (${specQuality.note ?? "scored"})`,
+			);
+		} catch (err) {
+			const note = `spec judging incomplete: ${String(err).slice(0, 140)}`;
+			log(`  ${trialId}: ${note}`);
+			trial.provenance.notes.push(note);
+		}
+
 		// Design adherence (static, no browser) when a UI design was selected.
 		let designAdherence: TrialGrades["designAdherence"] = null;
 		if (design && target.manifest.ui) {
@@ -198,6 +225,7 @@ export async function gradeTrials(
 			trialId: trial.provenance.trialId,
 			adherence,
 			quality,
+			specQuality,
 			integration: null,
 			designAdherence,
 		};

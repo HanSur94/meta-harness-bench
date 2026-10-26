@@ -40,6 +40,8 @@ export function scoreAdherence(
 		passAt1: allPass && scoring.length > 0,
 		completeFailure: !anyPass,
 		stepResults,
+		// Denominator of cost-per-passing-step (report/results.ts).
+		weightedCredit: Math.round(earned * 1e4) / 1e4,
 	};
 }
 

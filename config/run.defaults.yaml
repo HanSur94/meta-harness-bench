@@ -16,10 +16,18 @@ budget:
   runCostUsd: 400
 
 weights:
-  prdAdherence: 0.4
-  codeQuality: 0.25
-  speed: 0.175
-  tokenSpend: 0.175
+  prdAdherence: 0.35
+  codeQuality: 0.20
+  specQuality: 0.15
+  speed: 0.15
+  tokenSpend: 0.15
+
+# Composite ranking noise band: band = max(computed pooled stddev, this floor).
+# 0 = no floor (the computed band applies); the pilot records the calibrated value.
+noiseBand: 0
+
+# Spec-only mode: run through the last design step and score the spec alone.
+specOnly: false
 
 # Decision (a): /ce-compound is EXCLUDED from Compound Engineering's session
 #   script — it benefits future runs, not the artifact under grading.

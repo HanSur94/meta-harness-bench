@@ -103,6 +103,7 @@ describe("e2e dry run on a non-Symphony target (task 4.2)", () => {
 		}));
 		trial.grades = {
 			trialId: trial.provenance.trialId,
+			specQuality: null,
 			adherence: scoreAdherence(target.plan, stepResults),
 			quality: {
 				judgeModel: "dry-judge",

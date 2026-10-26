@@ -61,11 +61,12 @@ export function WeightControls({
 }) {
 	const set = (k: keyof Weights, v: number) => {
 		const next = { ...weights, [k]: v };
-		const sum =
-			next.prdAdherence + next.codeQuality + next.speed + next.tokenSpend;
+		const spec = next.specQuality ?? 0;
+		const sum = next.prdAdherence + next.codeQuality + spec + next.speed + next.tokenSpend;
 		onChange({
 			prdAdherence: next.prdAdherence / sum,
 			codeQuality: next.codeQuality / sum,
+			specQuality: spec / sum,
 			speed: next.speed / sum,
 			tokenSpend: next.tokenSpend / sum,
 		});
@@ -96,11 +97,11 @@ export function WeightControls({
 							min={0}
 							max={100}
 							step={1}
-							value={[weights[k] * 100]}
+							value={[(weights[k] ?? 0) * 100]}
 							onValueChange={([v]) => set(k, (v ?? 0) / 100)}
 						/>
 						<span className="w-12 shrink-0 text-right font-mono text-[12px]">
-							{(weights[k] * 100).toFixed(1)}%
+							{((weights[k] ?? 0) * 100).toFixed(1)}%
 						</span>
 					</div>
 				))}

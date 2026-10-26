@@ -50,6 +50,7 @@ export function composite(
 	const value =
 		dimensions.prdAdherence * weights.prdAdherence +
 		dimensions.codeQuality * weights.codeQuality +
+		(dimensions.specQuality ?? 0) * (weights.specQuality ?? 0) +
 		dimensions.speed * weights.speed +
 		dimensions.tokenSpend * weights.tokenSpend;
 	return Math.round(value * 100) / 100;
@@ -63,7 +64,7 @@ export interface ScoringInput {
 }
 
 /** Trials that count toward scoring: completed or capped, with telemetry+grades. */
-function countable(trials: TrialResult[]): TrialResult[] {
+export function countableTrials(trials: TrialResult[]): TrialResult[] {
 	return trials.filter(
 		(t) =>
 			(t.provenance.status === "completed" ||
@@ -93,17 +94,22 @@ export function scoreRun(input: ScoringInput): CandidateScore[] {
 		{
 			adherence: number[];
 			quality: number[];
+			specQuality: number[];
 			durationMs: number[];
 			costUsd: number[];
 			censored: boolean;
 		}
 	>();
 	for (const [candidate, trials] of byCandidate) {
-		const usable = countable(trials);
+		const usable = countableTrials(trials);
 		if (usable.length === 0) continue; // no gradeable trials: exclude from scoring/normalization
 		perCandidate.set(candidate, {
 			adherence: usable.map((t) => t.grades?.adherence?.gradedScore ?? 0),
 			quality: usable.map((t) => t.grades?.quality?.score ?? 0),
+			// SpecScore.overall is the 0-10 rubric mean; dimensions are 0-100.
+			specQuality: usable.map(
+				(t) => (t.grades?.specQuality?.overall ?? 0) * 10,
+			),
 			durationMs: usable.map((t) => t.telemetry?.agentDurationMs ?? 0),
 			costUsd: usable.map((t) => t.telemetry?.totalCostUsd ?? 0),
 			censored: trials.some((t) => t.provenance.status === "capped"),
@@ -124,6 +130,7 @@ export function scoreRun(input: ScoringInput): CandidateScore[] {
 		const dimensions: Record<Dimension, number> = {
 			prdAdherence: Math.round(stats(d.adherence).mean * 100) / 100,
 			codeQuality: Math.round(stats(d.quality).mean * 100) / 100,
+			specQuality: Math.round(stats(d.specQuality).mean * 100) / 100,
 			speed: speedScores.get(candidate) ?? 0,
 			tokenSpend: spendScores.get(candidate) ?? 0,
 		};
@@ -134,6 +141,7 @@ export function scoreRun(input: ScoringInput): CandidateScore[] {
 				{
 					prdAdherence: a,
 					codeQuality: d.quality[i] ?? 0,
+					specQuality: d.specQuality[i] ?? 0,
 					speed: dimensions.speed,
 					tokenSpend: dimensions.tokenSpend,
 				},
@@ -148,6 +156,7 @@ export function scoreRun(input: ScoringInput): CandidateScore[] {
 			stats: {
 				prdAdherence: stats(d.adherence),
 				codeQuality: stats(d.quality),
+				specQuality: stats(d.specQuality),
 				speed: stats(d.durationMs),
 				tokenSpend: stats(d.costUsd),
 			},
@@ -167,4 +176,47 @@ export function isInconclusive(scores: CandidateScore[]): boolean {
 	const aLow = a.composite - a.compositeStats.stddev;
 	const bHigh = b.composite + b.compositeStats.stddev;
 	return aLow <= bHigh;
+}
+
+/**
+ * Noise band (Definitions): pooled stddev of per-trial composites across all
+ * candidates, sample variance (n-1), then floored by the configured value:
+ * band = max(computed, configured). Candidates with <2 trials carry no variance
+ * of their own; if none has 2+, the computed band is 0.
+ */
+export function noiseBand(scores: CandidateScore[], configured = 0): number {
+	let weighted = 0;
+	let df = 0;
+	for (const s of scores) {
+		const n = s.trialsCounted;
+		if (n < 2) continue;
+		// compositeStats.stddev is the population sd; widen to the sample sd.
+		const sampleVar = (s.compositeStats.stddev ** 2) * (n / (n - 1));
+		weighted += sampleVar * (n - 1);
+		df += n - 1;
+	}
+	const computed = df > 0 ? Math.sqrt(weighted / df) : 0;
+	return Math.max(computed, configured);
+}
+
+export interface RankGap {
+	a: string;
+	b: string;
+	/** Mean composite gap, rounded like the composites themselves. */
+	gap: number;
+	/** false = within the noise band → "no significant difference". */
+	significant: boolean;
+}
+
+/**
+ * Pairwise rule down the ranked order: adjacent candidates are "no significant
+ * difference" when their mean composite gap is ≤ the band.
+ */
+export function rankGaps(scores: CandidateScore[], band: number): RankGap[] {
+	const ranked = [...scores].sort((x, y) => y.composite - x.composite);
+	return ranked.slice(1).map((b, i) => {
+		const a = ranked[i] as CandidateScore;
+		const gap = Math.round((a.composite - b.composite) * 100) / 100;
+		return { a: a.candidate, b: b.candidate, gap, significant: gap > band };
+	});
 }

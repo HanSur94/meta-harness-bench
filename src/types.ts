@@ -29,6 +29,7 @@ export type TrialStatus = z.infer<typeof TrialStatus>;
 export const Dimension = z.enum([
 	"prdAdherence",
 	"codeQuality",
+	"specQuality",
 	"speed",
 	"tokenSpend",
 ]);
@@ -107,13 +108,25 @@ export const Weights = z
 	.object({
 		prdAdherence: z.number().nonnegative().default(0.4),
 		codeQuality: z.number().nonnegative().default(0.25),
+		/**
+		 * Optional so v1 four-weight configs and stored results still parse
+		 * (absent = weight 0, the pre-spec-judge composite). run.defaults.yaml
+		 * sets the five-weight set (0.35/0.20/0.15/0.15/0.15).
+		 */
+		specQuality: z.number().nonnegative().optional(),
 		speed: z.number().nonnegative().default(0.175),
 		tokenSpend: z.number().nonnegative().default(0.175),
 	})
 	.refine(
 		(w) =>
-			Math.abs(w.prdAdherence + w.codeQuality + w.speed + w.tokenSpend - 1) <
-			1e-9,
+			Math.abs(
+				w.prdAdherence +
+					w.codeQuality +
+					(w.specQuality ?? 0) +
+					w.speed +
+					w.tokenSpend -
+					1,
+			) < 1e-9,
 		{
 			message: "weights must sum to 1",
 		},
@@ -140,6 +153,10 @@ export const RunConfig = z.object({
 	budget: Budget.default(Budget.parse({})),
 	weights: Weights.default(Weights.parse({})),
 	judgeModel: z.string().default("claude-sonnet-4-6"),
+	/** Spec-only mode: design→spec, score the spec alone (no code). */
+	specOnly: z.boolean().default(false),
+	/** Minimum noise band (composite points). 0 = no floor; the computed band applies. */
+	noiseBand: z.number().nonnegative().default(0),
 	infraRetryLimit: z.int().nonnegative().default(2),
 	realIntegrationTier: z.boolean().default(false),
 });
@@ -192,6 +209,8 @@ export const ModelRef = z.object({
 	provider: z.string(),
 	modelId: z.string(),
 	endpointHost: z.string().nullable().default(null),
+	/** Dated provider snapshot id when the profile pins one (judge/worker drift). */
+	snapshotId: z.string().nullable().optional(),
 });
 export type ModelRef = z.infer<typeof ModelRef>;
 
@@ -276,8 +295,50 @@ export const AdherenceResult = z.object({
 	passAt1: z.boolean(),
 	completeFailure: z.boolean(),
 	stepResults: z.array(StepResult),
+	/**
+	 * Σ(stepWeight × partialCredit) over non-bonus steps — the denominator of
+	 * cost-per-passing-step. Optional so historical grades still parse.
+	 */
+	weightedCredit: z.number().nonnegative().optional(),
 });
 export type AdherenceResult = z.infer<typeof AdherenceResult>;
+
+/** Spec-quality rubric criteria (spec-judge). All higher-is-better. */
+export const SpecCriterion = z.enum([
+	"prdCoverage",
+	"implementability",
+	"concreteness",
+	"decisionCapture",
+	"clarity",
+]);
+export type SpecCriterion = z.infer<typeof SpecCriterion>;
+
+export const SpecSample = z.object({
+	score: z.number().min(0).max(10),
+	/** Evidence-citing rationale for this sample. */
+	justification: z.string(),
+});
+export type SpecSample = z.infer<typeof SpecSample>;
+
+export const SpecCriterionScore = z.object({
+	criterion: SpecCriterion,
+	/** 3 samples per criterion, each 0-10. */
+	samples: z.array(SpecSample).min(1),
+	/** Median of the samples, 0-10. */
+	median: z.number().min(0).max(10),
+});
+export type SpecCriterionScore = z.infer<typeof SpecCriterionScore>;
+
+export const SpecScore = z.object({
+	judgeModel: z.string(),
+	criterionScores: z.array(SpecCriterionScore).length(5),
+	criterionMedians: z.record(SpecCriterion, z.number().min(0).max(10)),
+	/** Mean of the five criterion medians (0-10), equal criterion weights. */
+	overall: z.number().min(0).max(10),
+	/** Set when the judge could not run (e.g. zero artifacts). */
+	note: z.string().nullable().default(null),
+});
+export type SpecScore = z.infer<typeof SpecScore>;
 
 export const QualityCriterion = z.enum([
 	"tests",
@@ -356,6 +417,8 @@ export const TrialGrades = z.object({
 	trialId: z.string(),
 	adherence: AdherenceResult.nullable(),
 	quality: QualityResult.nullable(),
+	/** Spec-quality instrument (raw design artifacts, never scrubbed). */
+	specQuality: SpecScore.nullable().default(null),
 	integration: IntegrationResult.nullable(),
 	/** Present only when the run selected a design (design-adherence). */
 	designAdherence: DesignAdherenceGrade.nullable().default(null),
@@ -370,6 +433,11 @@ export const TrialResult = z.object({
 	provenance: TrialProvenance,
 	telemetry: TrialTelemetry.nullable(),
 	grades: TrialGrades.nullable(),
+	/** Cohort lifecycle, distinct from provenance.status (which is a trial outcome). */
+	cohortStatus: z.enum(["valid", "superseded", "retracted"]).optional(),
+	cohortId: z.string().nullable().optional(),
+	/** Did-not-finish: included in the cohort, excluded from ranking (DNF box). */
+	dnd: z.boolean().optional(),
 });
 export type TrialResult = z.infer<typeof TrialResult>;
 
@@ -380,6 +448,22 @@ export const DimensionStats = z.object({
 	stddev: z.number(),
 });
 export type DimensionStats = z.infer<typeof DimensionStats>;
+
+export const PhaseCost = z.object({
+	usd: z.number().nonnegative(),
+	tokens: z.int().nonnegative(),
+});
+export type PhaseCost = z.infer<typeof PhaseCost>;
+
+export const CandidateCosts = z.object({
+	/** Median across counted trials, per phase (design/build/setup buckets). */
+	designCost: PhaseCost,
+	buildCost: PhaseCost,
+	setupCost: PhaseCost,
+	/** buildCost.usd ÷ Σ(stepWeight × partialCredit); null when nothing passed. */
+	costPerPassingStepUsd: z.number().nullable(),
+});
+export type CandidateCosts = z.infer<typeof CandidateCosts>;
 
 export const CandidateScore = z.object({
 	candidate: z.string(),
@@ -392,12 +476,20 @@ export const CandidateScore = z.object({
 	compositeStats: DimensionStats,
 	trialsCounted: z.int().nonnegative(),
 	rightCensored: z.boolean().default(false),
+	/** Phase-split spend + cost-per-passing-step (v2; absent on v1 documents). */
+	costs: CandidateCosts.optional(),
 });
 export type CandidateScore = z.infer<typeof CandidateScore>;
 
+/** Current results schema. v1 documents remain readable (see upgradeResultsV1). */
+export const RESULTS_SCHEMA_VERSION = 2;
+
 export const RunResults = z.object({
-	schemaVersion: z.literal(1),
+	/** Plain number: 1 = historical passthrough, 2 = current. */
+	schemaVersion: z.union([z.literal(1), z.literal(2)]),
 	runId: z.string(),
+	/** full = design+build; spec-only = design→spec, specQuality is the only scored dimension. */
+	mode: z.enum(["full", "spec-only"]).default("full"),
 	config: RunConfig,
 	weights: Weights,
 	prdSha256: z.string(),
@@ -408,6 +500,18 @@ export const RunResults = z.object({
 	 * pre-registry results still parse (run-telemetry / model-registry). */
 	workerModel: ModelRef.optional(),
 	judgeModel: ModelRef.optional(),
+	/** Both graders, separately pinned (v2). */
+	judgeModels: z
+		.object({ codeJudge: ModelRef, specJudge: ModelRef })
+		.optional(),
+	/** Dated model snapshots for worker + both judges (null when the profile pins none). */
+	snapshotIds: z
+		.object({
+			worker: z.string().nullable(),
+			codeJudge: z.string().nullable(),
+			specJudge: z.string().nullable(),
+		})
+		.optional(),
 	crossVendorJudge: z.boolean().default(false),
 	costSource: CostSource.default("harness-reported"),
 	scores: z.array(CandidateScore),
@@ -418,3 +522,18 @@ export const RunResults = z.object({
 	inconclusive: z.boolean(),
 });
 export type RunResults = z.infer<typeof RunResults>;
+
+/**
+ * Fill a v1 document's fourth dimension (specQuality) with zero-value
+ * placeholders so current readers parse historical runs unchanged. v1 weights
+ * carry no specQuality, so the composite is bit-identical to what v1 produced.
+ */
+export function upgradeResultsV1(raw: Record<string, unknown>): Record<string, unknown> {
+	if (raw.schemaVersion !== 1) return raw;
+	const zero = { mean: 0, min: 0, max: 0, stddev: 0 };
+	for (const score of (raw.scores as Record<string, unknown>[] | undefined) ?? []) {
+		score.dimensions = { ...(score.dimensions as object), specQuality: 0 };
+		score.stats = { ...(score.stats as object), specQuality: zero };
+	}
+	return raw;
+}

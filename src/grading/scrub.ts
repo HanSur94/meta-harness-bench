@@ -8,6 +8,11 @@ import type { CandidateEntry } from "../types";
  * which framework produced the artifact (grading-rubric spec: judge
  * independence). ALL registered markers across ALL candidates are scrubbed
  * from every workspace, so absence of a marker is not itself a signal.
+ *
+ * INVARIANT (no functional change): scrubbing applies to the CODE-judge copy
+ * only. The spec-quality judge (spec-judge.ts) reads the RAW markerPaths
+ * artifacts from the archived workspace — never this blind copy — because
+ * framework identity is the spec instrument's subject, not a bias to remove.
  */
 export function scrubWorkspace(
 	workspaceDir: string,

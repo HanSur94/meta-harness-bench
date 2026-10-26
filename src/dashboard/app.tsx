@@ -33,13 +33,14 @@ interface RunSummary {
 const DIM_LABELS: Record<string, string> = {
 	prdAdherence: "PRD adherence",
 	codeQuality: "Code quality",
+	specQuality: "Spec quality",
 	speed: "Speed*",
 	tokenSpend: "Token spend*",
 };
 
 const HELP: Record<string, string> = {
 	Composite:
-		"Weighted sum of the four dimension scores using the weights in the panel above (defaults: PRD adherence 40%, code quality 25%, speed 17.5%, token spend 17.5%). Recomputed live when you move the sliders.",
+		"Weighted sum of the five dimension scores using the weights in the panel above (defaults: PRD adherence 35%, code quality 20%, spec quality 15%, speed 15%, token spend 15%). Recomputed live when you move the sliders.",
 	"PRD adherence":
 		"Graded Score, 0–100 (ViBench methodology): an evaluator agent executes the frozen, spec-derived test plan against the BUILT artifact — running it against mock services and recording evidence per step. Weighted partial credit over non-bonus steps; fatal cold-start failures zero the remainder. Absolute scale, comparable across runs.",
 	"Code quality":
@@ -94,10 +95,11 @@ function useFetch<T>(url: string): T | undefined {
 /* --------------------------------------------------------- weight controls */
 
 const DEFAULT_WEIGHTS: Weights = {
-	prdAdherence: 0.4,
-	codeQuality: 0.25,
-	speed: 0.175,
-	tokenSpend: 0.175,
+	prdAdherence: 0.35,
+	codeQuality: 0.2,
+	specQuality: 0.15,
+	speed: 0.15,
+	tokenSpend: 0.15,
 };
 
 function WeightControls({
@@ -109,11 +111,12 @@ function WeightControls({
 }) {
 	const set = (k: keyof Weights, v: number) => {
 		const next = { ...weights, [k]: v };
-		const sum =
-			next.prdAdherence + next.codeQuality + next.speed + next.tokenSpend;
+		const spec = next.specQuality ?? 0;
+		const sum = next.prdAdherence + next.codeQuality + spec + next.speed + next.tokenSpend;
 		onChange({
 			prdAdherence: next.prdAdherence / sum,
 			codeQuality: next.codeQuality / sum,
+			specQuality: spec / sum,
 			speed: next.speed / sum,
 			tokenSpend: next.tokenSpend / sum,
 		});
@@ -136,13 +139,13 @@ function WeightControls({
 								textAlign: "right",
 							}}
 						>
-							{(weights[k] * 100).toFixed(1)}%
+							{((weights[k] ?? 0) * 100).toFixed(1)}%
 						</span>
 						<input
 							type="range"
 							min={0}
 							max={100}
-							value={weights[k] * 100}
+							value={(weights[k] ?? 0) * 100}
 							onChange={(e) => set(k, Number(e.currentTarget.value) / 100)}
 						/>
 					</label>
@@ -210,6 +213,7 @@ function Leaderboard() {
 				dims: {
 					prdAdherence: mean((s) => s.dimensions.prdAdherence),
 					codeQuality: mean((s) => s.dimensions.codeQuality),
+					specQuality: mean((s) => s.dimensions.specQuality),
 					speed: mean((s) => s.dimensions.speed),
 					tokenSpend: mean((s) => s.dimensions.tokenSpend),
 				},

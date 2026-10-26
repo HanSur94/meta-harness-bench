@@ -123,6 +123,7 @@ describe("design-adherence e2e dry run (4.2)", () => {
 		expect(da.color.score).toBeGreaterThan(90); // built from linear's palette
 		trial.grades = {
 			trialId: trial.provenance.trialId,
+			specQuality: null,
 			adherence: null,
 			quality: null,
 			integration: null,
