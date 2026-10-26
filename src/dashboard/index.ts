@@ -50,6 +50,7 @@ const server = Bun.serve({
 					supported: e.supported,
 					schemaVersion: e.schemaVersion,
 					error: e.error,
+					live: e.live,
 					summary: e.results
 						? {
 								config: {

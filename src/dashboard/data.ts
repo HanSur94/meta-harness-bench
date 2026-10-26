@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { isPidAlive, readRunState } from "../studio/run-state";
 import { loadTargetCatalog } from "../targets";
 import { RunResults, type TrialGrades, upgradeResultsV1 } from "../types";
 
@@ -12,6 +13,15 @@ export interface TargetInfo {
 	evalClass: "deterministic" | "judged" | "hybrid";
 }
 
+/** Live progress from `run-state.json` for a run without results.json yet. */
+export interface LiveRunInfo {
+	status: "running" | "error" | "cancelled" | "interrupted" | "completed";
+	stage: string | null;
+	candidates: string[];
+	startedAt: string;
+	updatedAt: string;
+}
+
 export interface RunIndexEntry {
 	runId: string;
 	dir: string;
@@ -20,6 +30,8 @@ export interface RunIndexEntry {
 	target?: string;
 	/** Friendly name + one-line summary for `target`. */
 	targetInfo?: TargetInfo;
+	/** Live progress while a run is still building (no results.json yet). */
+	live?: LiveRunInfo;
 	/** Parsed results when supported; undefined otherwise. */
 	results?: RunResults;
 	schemaVersion?: number;
@@ -68,7 +80,29 @@ export function loadRunIndex(runsDir = "runs"): RunIndexEntry[] {
 	for (const name of readdirSync(runsDir)) {
 		const dir = join(runsDir, name);
 		const resultsPath = join(dir, "results.json");
-		if (!existsSync(resultsPath)) continue;
+		if (!existsSync(resultsPath)) {
+			// Still building: show it from run-state.json (CLI and studio both write it).
+			const state = readRunState(dir);
+			if (state && state.status !== "completed") {
+				entries.push({
+					runId: state.runId,
+					dir,
+					supported: true,
+					live: {
+						// A dead owner process means the run is not actually running.
+						status:
+							state.status === "running" && !isPidAlive(state.ownerPid)
+								? "interrupted"
+								: state.status,
+						stage: state.stage,
+						candidates: state.candidates,
+						startedAt: state.startedAt,
+						updatedAt: state.updatedAt,
+					},
+				});
+			}
+			continue;
+		}
 		const mtimeMs = statSync(resultsPath).mtimeMs;
 		const cached = cache.get(resultsPath);
 		if (cached && cached.mtimeMs === mtimeMs) {

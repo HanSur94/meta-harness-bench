@@ -47,6 +47,7 @@ import {
 	toModelRef,
 } from "./models";
 import { gradeTrials } from "./orchestrator/grade";
+import { writeRunState } from "./studio/run-state";
 import { buildMatrix, runMatrix } from "./orchestrator/scheduler";
 import {
 	createProvider,
@@ -355,6 +356,20 @@ async function cmdRun(): Promise<void> {
 	);
 
 	const startedAt = new Date().toISOString();
+	// Live row for the dashboard: same durable record the studio writes.
+	// ponytail: stage-only progress (no per-trial status map); add if the UI needs it.
+	const stateBase = {
+		runId,
+		kind: "live" as const,
+		candidates: candidates.map((c) => c.id),
+		trials: {},
+		costUsdSoFar: 0,
+		startedAt,
+		updatedAt: startedAt,
+		ownerPid: process.pid,
+		error: null as string | null,
+	};
+	writeRunState(runDir, { ...stateBase, status: "running", stage: "building" });
 	const trials = await runMatrix(
 		config,
 		buildMatrix(candidates, config.trialsPerCandidate),
@@ -370,6 +385,14 @@ async function cmdRun(): Promise<void> {
 			workerEnv,
 			workerModelFlag,
 			workerModelRef,
+			onStage: (_trialId, stage) => {
+					writeRunState(runDir, {
+						...stateBase,
+						status: "running",
+						stage,
+						updatedAt: new Date().toISOString(),
+					});
+				},
 		},
 	);
 
@@ -403,6 +426,12 @@ async function cmdRun(): Promise<void> {
 	});
 	console.log(`results: ${writeResults(runDir, results)}`);
 	console.log(`scorecard: ${writeScorecard(runDir, results)}`);
+	writeRunState(runDir, {
+		...stateBase,
+		status: "completed",
+		stage: flag("grade") ? "graded" : "built",
+		updatedAt: new Date().toISOString(),
+	});
 }
 
 async function cmdModel(): Promise<void> {

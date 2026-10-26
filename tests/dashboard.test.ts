@@ -129,6 +129,41 @@ describe("bench task naming (dashboard tasks 1 + 5)", () => {
 });
 
 describe("dashboard wording (STE labels + help)", () => {
+	test("a run without results.json shows its live state (dead owner = interrupted)", () => {
+		const dir = mkdtempSync(join(tmpdir(), "live-run-"));
+		const run = join(dir, "run-test");
+		mkdirSync(run, { recursive: true });
+		const state = (pid: number) => ({
+			runId: "run-test",
+			kind: "live",
+			status: "running",
+			stage: "building egm-t1",
+			candidates: ["egm", "gsd"],
+			trials: {},
+			costUsdSoFar: 0,
+			startedAt: "2026-10-26T20:58:16.000Z",
+			updatedAt: "2026-10-26T21:10:00.000Z",
+			ownerPid: pid,
+			error: null,
+		});
+		writeFileSync(
+			join(run, "run-state.json"),
+			JSON.stringify(state(process.pid)),
+		);
+		let entries = loadRunIndex(dir);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.live?.status).toBe("running");
+		expect(entries[0]?.live?.stage).toContain("egm");
+		// Owner gone -> the dashboard must not claim it is still running.
+		writeFileSync(
+			join(run, "run-state.json"),
+			JSON.stringify(state(999999)),
+		);
+		entries = loadRunIndex(dir);
+		expect(entries[0]?.live?.status).toBe("interrupted");
+		rmSync(dir, { recursive: true, force: true });
+	});
+
 	test("bench class flows from the manifest to the dashboard label", () => {
 		const info = targetForRun("symphony-daemon", "0".repeat(64));
 		expect(info.evalClass).toBe("hybrid");

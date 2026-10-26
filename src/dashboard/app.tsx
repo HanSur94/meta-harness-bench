@@ -14,6 +14,14 @@ interface RunSummary {
 	supported: boolean;
 	schemaVersion?: number;
 	error?: string;
+	/** Present while the run is still building (no results yet). */
+	live?: {
+		status: string;
+		stage: string | null;
+		candidates: string[];
+		startedAt: string;
+		updatedAt: string;
+	};
 	summary?: {
 		config: {
 			harness: string;
@@ -340,6 +348,26 @@ function Leaderboard() {
 							{info.summary && ` — ${info.summary}`}
 						</span>
 					))}
+				</p>
+			)}
+			{runs.some((r) => r.live) && (
+				<p className="muted">
+					In progress:{" "}
+					{runs
+						.filter((r) => r.live)
+						.map((r, i) => (
+							<span key={r.runId}>
+								{i > 0 && " · "}
+								<strong>{r.runId}</strong>{" "}
+								<span className="badge">
+									{r.live?.status === "running" ? "building" : r.live?.status}
+								</span>
+								{r.live?.stage ? ` — ${r.live.stage}` : ""}
+								{r.live?.candidates?.length
+									? ` (${r.live.candidates.join(", ")})`
+									: ""}
+							</span>
+						))}
 				</p>
 			)}
 			<HowItWorks />
