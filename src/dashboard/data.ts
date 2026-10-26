@@ -1,15 +1,44 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { loadTargetCatalog } from "../targets";
 import { RunResults, type TrialGrades, upgradeResultsV1 } from "../types";
+
+/** Catalog label for one bench task (target manifest, descriptive only). */
+export interface TargetInfo {
+	name: string;
+	summary: string;
+	description: string;
+}
 
 export interface RunIndexEntry {
 	runId: string;
 	dir: string;
 	supported: boolean;
+	/** Bench task recorded on the run. */
+	target?: string;
+	/** Friendly name + one-line summary for `target`. */
+	targetInfo?: TargetInfo;
 	/** Parsed results when supported; undefined otherwise. */
 	results?: RunResults;
 	schemaVersion?: number;
 	error?: string;
+}
+
+/**
+ * Resolve a run's bench task to its catalog entry. `prdSha256` wins, so runs
+ * written before `config.target` existed still name the task they built.
+ * ponytail: one manifest scan per run; cache it if runs/ grows past a few dozen.
+ */
+export function targetForRun(
+	target: string,
+	prdSha256: string,
+	targetsDir = "targets",
+): TargetInfo {
+	const { byName, bySha } = loadTargetCatalog(targetsDir);
+	const hit = bySha.get(prdSha256) ?? byName.get(target);
+	return hit
+		? { name: hit.name, summary: hit.summary, description: hit.description }
+		: { name: target, summary: "", description: "" };
 }
 
 // v1 = historical passthrough (normalized on read), v2 = current.
@@ -66,12 +95,15 @@ export function loadRunIndex(runsDir = "runs"): RunIndexEntry[] {
 						) as TrialGrades;
 					}
 				}
+				const results = RunResults.parse(upgradeResultsV1(raw));
 				entry = {
 					runId: raw.runId ?? name,
 					dir,
 					supported: true,
+					target: results.config.target,
+					targetInfo: targetForRun(results.config.target, results.prdSha256),
 					schemaVersion: raw.schemaVersion,
-					results: RunResults.parse(upgradeResultsV1(raw)),
+					results,
 				};
 			}
 		} catch (err) {

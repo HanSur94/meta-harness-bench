@@ -122,6 +122,7 @@ export function resolveRunInputs(r: StudioRunRequest) {
 	const workerEnv = rw.env;
 	const workerModelFlag = rw.modelFlag;
 	const config = RunConfig.parse({
+		target: target.manifest.name,
 		candidates: r.candidates,
 		harness: r.harness,
 		model: workerProfile.name,

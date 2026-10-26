@@ -56,7 +56,12 @@ import {
 import { loadRegistry, resolveCandidates } from "./registry";
 import { writeScorecard } from "./report/markdown";
 import { buildResults, writeResults } from "./report/results";
-import { loadTarget, renderTargetPrompt, scaffoldTarget } from "./targets";
+import {
+	loadTarget,
+	loadTargetCatalog,
+	renderTargetPrompt,
+	scaffoldTarget,
+} from "./targets";
 import {
 	type CandidateEntry,
 	RunConfig,
@@ -205,8 +210,10 @@ async function cmdRun(): Promise<void> {
 		trialMinutes !== undefined
 			? { ...baseBudget, trialWallClockMs: Number(trialMinutes) * 60000 }
 			: baseBudget;
+	const targetName = arg("target") ?? "symphony-daemon";
 	const config = RunConfig.parse({
 		...defaults,
+		target: targetName,
 		candidates: (
 			arg("candidates") ?? registry.candidates.map((c) => c.id).join(",")
 		).split(","),
@@ -285,7 +292,9 @@ async function cmdRun(): Promise<void> {
 	// (absent) dollar figure.
 	const costSource = costSourceForHarness(workerProfile, harness.reportsCost);
 
-	const target = loadTarget(arg("target") ?? "symphony-daemon");
+	const target = loadTarget(targetName);
+	// The manifest name is authoritative (the directory name could differ).
+	config.target = target.manifest.name;
 
 	// Optional design selection (design-adherence): load + hash the frozen
 	// DESIGN.md, warn if the target has no UI (the contract would be a no-op).
@@ -503,9 +512,13 @@ async function cmdReport(): Promise<void> {
 			tokenSpend: t,
 		});
 	}
+	const config = RunConfig.parse(prior.config);
+	// runs that predate config.target: name the task by PRD hash.
+	config.target =
+		loadTargetCatalog().bySha.get(prior.prdSha256)?.name ?? config.target;
 	const results = buildResults({
 		runId: prior.runId,
-		config: RunConfig.parse(prior.config),
+		config,
 		weights,
 		prdSha256: prior.prdSha256,
 		testPlanSha256: prior.testPlanSha256,

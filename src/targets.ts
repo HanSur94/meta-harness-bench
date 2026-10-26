@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
@@ -79,6 +85,51 @@ export const TargetManifest = z.object({
 export type TargetManifest = z.infer<typeof TargetManifest>;
 
 export class TargetError extends Error {}
+
+/** Catalog-only view of a manifest: enough to name a run's bench task. */
+export interface TargetCatalogEntry {
+	name: string;
+	summary: string;
+	description: string;
+	prdSha256: string;
+}
+
+/**
+ * Read the catalog fields of every targets/<name>/target.yaml. Manifest fields
+ * only — no PRD or test-plan validation, so the dashboard cannot break on a
+ * drifted target. `bySha` lets a run written before `config.target` existed
+ * still name the task it built.
+ */
+export function loadTargetCatalog(targetsDir = "targets"): {
+	byName: Map<string, TargetCatalogEntry>;
+	bySha: Map<string, TargetCatalogEntry>;
+} {
+	const byName = new Map<string, TargetCatalogEntry>();
+	const bySha = new Map<string, TargetCatalogEntry>();
+	if (!existsSync(targetsDir)) return { byName, bySha };
+	for (const dir of readdirSync(targetsDir)) {
+		const path = join(targetsDir, dir, "target.yaml");
+		if (!existsSync(path)) continue;
+		try {
+			const parsed = TargetManifest.safeParse(
+				parse(readFileSync(path, "utf8")),
+			);
+			if (!parsed.success) continue;
+			const m = parsed.data;
+			const entry = {
+				name: m.name,
+				summary: m.summary,
+				description: m.description,
+				prdSha256: m.prdSha256,
+			};
+			byName.set(m.name, entry);
+			bySha.set(m.prdSha256, entry);
+		} catch {
+			// Skip an unreadable manifest; the catalog is descriptive only.
+		}
+	}
+	return { byName, bySha };
+}
 
 export interface LoadedTarget {
 	manifest: TargetManifest;

@@ -1,9 +1,20 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRunIndex } from "../src/dashboard/data";
+import { parse } from "yaml";
+import { DIM_LABELS, HELP } from "../src/dashboard/app";
+import { loadRunIndex, targetForRun } from "../src/dashboard/data";
 import { composite } from "../src/grading/scoring";
+import { buildResults } from "../src/report/results";
+import { RunConfig, RunResults } from "../src/types";
 
 const tmp = mkdtempSync(join(tmpdir(), "he-dash-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -46,6 +57,103 @@ describe("dashboard run index (tasks 1.1/1.2)", () => {
 		for (const s of real.results.scores) {
 			// Same shared module the CLI used to produce the stored composite.
 			expect(composite(s.dimensions, real.results.weights)).toBe(s.composite);
+		}
+	});
+});
+
+describe("bench task naming (dashboard tasks 1 + 5)", () => {
+	test("config.target defaults to symphony-daemon and accepts a target", () => {
+		expect(RunConfig.parse({ candidates: ["x"] }).target).toBe(
+			"symphony-daemon",
+		);
+		expect(
+			RunConfig.parse({ candidates: ["x"], target: "kanban" }).target,
+		).toBe("kanban");
+	});
+
+	test("legacy run without config.target still names its task", () => {
+		const index = loadRunIndex("tests/fixtures");
+		const run = index.find((e) => e.runId === "combined-n1");
+		expect(run?.target).toBe("symphony-daemon");
+		expect(run?.targetInfo?.name).toBe("symphony-daemon");
+		expect(run?.targetInfo?.summary).toContain("daemon");
+	});
+
+	test("recorded target resolves to its manifest name + summary", () => {
+		const runsDir = join(tmp, "target-runs");
+		const raw = JSON.parse(
+			readFileSync(
+				join("tests/fixtures", "combined-n1", "results.json"),
+				"utf8",
+			),
+		);
+		raw.runId = "run-web-app";
+		raw.config.target = "web-app";
+		// No manifest matches this hash, so the recorded target decides.
+		raw.prdSha256 = "0".repeat(64);
+		mkdirSync(join(runsDir, "run-web-app"), { recursive: true });
+		writeFileSync(
+			join(runsDir, "run-web-app", "results.json"),
+			JSON.stringify(raw),
+		);
+
+		const [entry] = loadRunIndex(runsDir);
+		expect(entry?.target).toBe("web-app");
+		expect(entry?.targetInfo?.name).toBe("web-app");
+		expect(entry?.targetInfo?.summary).toContain("Barber-shop");
+	});
+
+	test("results.json keeps the bench task (config is serialized)", () => {
+		const results = buildResults({
+			runId: "run-x",
+			config: RunConfig.parse({ candidates: ["a"], target: "kanban" }),
+			prdSha256: "0".repeat(64),
+			testPlanSha256: null,
+			startedAt: new Date().toISOString(),
+			endedAt: null,
+			trials: [],
+		});
+		const round = RunResults.parse(JSON.parse(JSON.stringify(results)));
+		expect(round.config.target).toBe("kanban");
+	});
+
+	test("prdSha256 wins for runs written before the field existed", () => {
+		const manifest = parse(
+			readFileSync("targets/symphony-daemon/target.yaml", "utf8"),
+		) as { prdSha256: string };
+		const info = targetForRun("wrong-name", manifest.prdSha256);
+		expect(info.name).toBe("symphony-daemon");
+		expect(info.summary.length).toBeGreaterThan(0);
+	});
+});
+
+describe("dashboard wording (STE labels + help)", () => {
+	test("every dimension has a plain label with matching help", () => {
+		expect(Object.keys(DIM_LABELS)).toEqual([
+			"prdAdherence",
+			"codeQuality",
+			"specQuality",
+			"speed",
+			"tokenSpend",
+		]);
+		expect(DIM_LABELS.prdAdherence).toBe("Meets the task spec");
+		expect(DIM_LABELS.codeQuality).toBe("Code quality");
+		expect(DIM_LABELS.specQuality).toBe("Design document quality");
+		expect(DIM_LABELS.speed).toBe("Speed (same run)");
+		expect(DIM_LABELS.tokenSpend).toBe("Cost (same run)");
+		for (const label of Object.values(DIM_LABELS)) {
+			expect(HELP[label]).toBeTruthy();
+		}
+		expect(HELP.Composite).toBeTruthy();
+		expect(HELP["Bench task"]).toBeTruthy();
+	});
+
+	test("help states the range, the direction, and a limitation", () => {
+		for (const label of ["Composite", ...Object.values(DIM_LABELS)]) {
+			const text = HELP[label] ?? "";
+			expect(text).toContain("0 to 100");
+			expect(text).toContain("A higher value is better");
+			expect(text).toContain("Limitation:");
 		}
 	});
 });

@@ -45,6 +45,8 @@ const server = Bun.serve({
 				const entries = loadRunIndex().map((e) => ({
 					runId: e.runId,
 					dir: e.dir,
+					target: e.target,
+					targetInfo: e.targetInfo,
 					supported: e.supported,
 					schemaVersion: e.schemaVersion,
 					error: e.error,

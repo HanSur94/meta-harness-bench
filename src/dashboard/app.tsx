@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { composite } from "../grading/scoring";
 import type { CandidateScore, TrialResult, Weights } from "../types";
+import type { TargetInfo } from "./data";
 
 /* ------------------------------------------------------------------ types */
 
 interface RunSummary {
 	runId: string;
 	dir: string;
+	target?: string;
+	targetInfo?: TargetInfo;
 	supported: boolean;
 	schemaVersion?: number;
 	error?: string;
@@ -30,28 +33,34 @@ interface RunSummary {
 
 /* ------------------------------------------------------------ shared bits */
 
-const DIM_LABELS: Record<string, string> = {
-	prdAdherence: "PRD adherence",
+export const DIM_LABELS: Record<string, string> = {
+	prdAdherence: "Meets the task spec",
 	codeQuality: "Code quality",
-	specQuality: "Spec quality",
-	speed: "Speed*",
-	tokenSpend: "Token spend*",
+	specQuality: "Design document quality",
+	speed: "Speed (same run)",
+	tokenSpend: "Cost (same run)",
 };
 
-const HELP: Record<string, string> = {
+/** Tooltip text. Plain words: what the score is, its range, who measures it,
+ * and what it cannot tell you. Keys must match DIM_LABELS. */
+export const HELP: Record<string, string> = {
 	Composite:
-		"Weighted sum of the five dimension scores using the weights in the panel above (defaults: PRD adherence 35%, code quality 20%, spec quality 15%, speed 15%, token spend 15%). Recomputed live when you move the sliders.",
-	"PRD adherence":
-		"Graded Score, 0–100 (ViBench methodology): an evaluator agent executes the frozen, spec-derived test plan against the BUILT artifact — running it against mock services and recording evidence per step. Weighted partial credit over non-bonus steps; fatal cold-start failures zero the remainder. Absolute scale, comparable across runs.",
+		"The overall score. It is a weighted mix of the five scores. Each score is 0 to 100. A higher value is better. The panel above sets the weights. Move a slider and the page calculates the new mix at once. Limitation: the weights are a choice, not a fact. A different mix can change the order.",
+	"Meets the task spec":
+		"How much of the task the build completes. Range 0 to 100. A higher value is better. An evaluator agent runs the frozen test plan on the built software. It records evidence for each step. A full pass gives full credit. A partial pass gives part credit. A failed cold start stops the run, and the other steps get no credit. Limitation: it scores the steps in the plan only. It cannot show quality outside the plan.",
 	"Code quality":
-		"Blind LLM-judge score, 0–100: five criteria (meaningful passing tests, architecture vs the spec's layering, error handling, dead code, documentation), each scored 0–10 three times by a pinned judge model (temperature-fixed, never the worker model) on a copy scrubbed of framework-identifying files; per-criterion medians averaged ×10. Absolute scale.",
-	"Speed*":
-		"Agent working time: the sum of harness session durations (sandbox setup and grading time excluded), min-max normalized within THIS run's candidate set — fastest mean = 100, slowest = 0, linear between. Not comparable across runs with different candidates.",
-	"Token spend*":
-		"Total cost across sessions (harness-reported USD; token counts when pricing is unavailable), min-max normalized within THIS run's candidate set — cheapest = 100, priciest = 0. Not comparable across runs with different candidates.",
-	"±σ": "Standard deviation of per-trial composite scores for this candidate. When the top two candidates' ranges (mean ± σ) overlap, the ranking is flagged inconclusive.",
+		"How clean the code is. Range 0 to 100. A higher value is better. A judge model reads the code. This judge is not the model that wrote the code. It scores five points: tests, structure, error handling, dead code, and documentation. It scores each point three times and uses the median. Limitation: a model gives this score. The score can contain the bias of the judge. It is not a compiler result and not a test result.",
+	"Design document quality":
+		"How good the design document is. Range 0 to 100. A higher value is better. A judge model reads the design and spec files with the task text. It scores five points: task coverage, implementability, concrete detail, recorded decisions, and clarity. It scores each point three times and uses the median. Limitation: a model gives this score, so it can contain bias. It cannot show if the code follows the document.",
+	"Speed (same run)":
+		"How fast the agent worked. Range 0 to 100. A higher value is better. The page compares the agent time of all frameworks in the same run. The fastest framework gets 100. The slowest framework gets 0. Setup time and grading time do not count. Limitation: the value is relative to this run. Do not compare it with other runs.",
+	"Cost (same run)":
+		"What the run cost. Range 0 to 100. A higher value is better, because a low cost gets a high score. The page compares the cost of all frameworks in the same run. The cheapest framework gets 100. The most expensive framework gets 0. The cost comes from the harness report. When the harness gives no USD value, the page uses token counts. Limitation: the value is relative to this run. Do not compare it with other runs.",
+	"±σ": "The spread of the trial scores for one framework. A small value means the trials agree. When two frameworks are closer than their band, the page shows 'no significant difference'.",
 	Trials:
-		"Number of graded trials counted for this candidate (completed or budget-capped with an artifact). Capped trials flag the row as right-censored.",
+		"The number of trials that count for this framework. A 'capped' mark means a trial stopped at the time limit or the cost limit.",
+	"Bench task":
+		"The task that every framework builds. All frameworks in one run get the same task, the same model, and the same harness.",
 };
 
 function Th({ label }: { label: string }) {
@@ -123,9 +132,9 @@ function WeightControls({
 	};
 	return (
 		<div className="weights">
-			<strong>Re-weight (ephemeral, client-side)</strong>{" "}
+			<strong>Weights (this page only)</strong>{" "}
 			<button type="button" onClick={() => onChange(DEFAULT_WEIGHTS)}>
-				reset
+				Reset
 			</button>
 			<div className="sliders">
 				{(Object.keys(DIM_LABELS) as (keyof Weights)[]).map((k) => (
@@ -165,6 +174,45 @@ function reweight(
 		.sort((a, b) => b.rw - a.rw);
 }
 
+/** Collapsed explainer: how the rating is produced, in plain words. */
+function HowItWorks() {
+	return (
+		<details>
+			<summary>How the rating works</summary>
+			<ul>
+				<li>
+					One row is one framework. All frameworks in a run get the same task,
+					the same model, and the same harness.
+				</li>
+				<li>
+					There are five scores. Each score is 0 to 100. A higher value is
+					better.
+				</li>
+				<li>
+					The Composite is a weighted mix of the five scores. Move the sliders
+					to change the weights. The page calculates the new values at once.
+				</li>
+				<li>
+					Correctness comes first. "Meets the task spec" has the largest default
+					weight (35%).
+				</li>
+				<li>
+					Speed and Cost are relative to the other frameworks in the same run.
+					Do not compare them across runs.
+				</li>
+				<li>
+					Noise band: when two scores are closer than the band, the page shows
+					"no significant difference".
+				</li>
+				<li>
+					What it cannot tell you: one run is not a trend. Use the regression
+					view (post-pilot) for trends.
+				</li>
+			</ul>
+		</details>
+	);
+}
+
 /* -------------------------------------------------------------- leaderboard */
 
 function Leaderboard() {
@@ -177,17 +225,37 @@ function Leaderboard() {
 	const active = supported.filter(
 		(r) => selected.size === 0 || selected.has(r.runId),
 	);
+	// Bench task(s) of the selected runs; one entry per distinct target.
+	const benchTasks = [
+		...new Map(
+			active.map((r) => [
+				r.targetInfo?.name ?? r.target ?? "unknown",
+				r.targetInfo?.summary ?? "",
+			]),
+		).entries(),
+	];
 
 	// Aggregate: mean of per-run (re-weighted) composites per candidate/harness/model (design D3).
 	const byKey = new Map<
 		string,
-		{ rows: (CandidateScore & { rw: number })[]; runs: number }
+		{
+			rows: (CandidateScore & {
+				rw: number;
+				target: string;
+				summary: string;
+			})[];
+			runs: number;
+		}
 	>();
 	for (const r of active) {
 		for (const s of reweight(r.summary!.scores, weights)) {
 			const key = `${s.candidate}|${s.harness}|${s.model}`;
 			const slot = byKey.get(key) ?? { rows: [], runs: 0 };
-			slot.rows.push(s);
+			slot.rows.push({
+				...s,
+				target: r.targetInfo?.name ?? r.target ?? "unknown",
+				summary: r.targetInfo?.summary ?? "",
+			});
 			slot.runs++;
 			byKey.set(key, slot);
 		}
@@ -217,6 +285,8 @@ function Leaderboard() {
 					speed: mean((s) => s.dimensions.speed),
 					tokenSpend: mean((s) => s.dimensions.tokenSpend),
 				},
+				targets: [...new Set(rs.map((s) => s.target))].join(", "),
+				targetSummary: rs.find((s) => s.summary)?.summary ?? "",
 				trials: rs.reduce((a, s) => a + s.trialsCounted, 0),
 				runs: n,
 				censored: rs.some((s) => s.rightCensored),
@@ -231,17 +301,31 @@ function Leaderboard() {
 			{mixedSets && (
 				<p>
 					<span className="badge warn">
-						mixed candidate sets across selected runs — speed*/spend* are
-						within-run normalized and not comparable across them
+						selected runs use different candidate sets. Speed and Cost are
+						relative to each run. Do not compare them across runs.
 					</span>
 				</p>
 			)}
+			{benchTasks.length > 0 && (
+				<p className="muted">
+					Bench task{benchTasks.length === 1 ? "" : "s"}:{" "}
+					{benchTasks.map(([name, summary], i) => (
+						<span key={name}>
+							{i > 0 && " · "}
+							<strong>{name}</strong>
+							{summary && ` — ${summary}`}
+						</span>
+					))}
+				</p>
+			)}
+			<HowItWorks />
 			<table>
 				<thead>
 					<tr>
 						<th>#</th>
 						<th>Candidate</th>
 						<th>Harness / model</th>
+						<Th label="Bench task" />
 						<Th label="Composite" />
 						{Object.values(DIM_LABELS).map((l) => (
 							<Th key={l} label={l} />
@@ -260,6 +344,7 @@ function Leaderboard() {
 							<td className="muted mono">
 								{r.harness} / {r.model}
 							</td>
+							<td title={r.targetSummary}>{r.targets}</td>
 							<td>
 								<Bar v={r.composite} />
 							</td>
@@ -278,11 +363,6 @@ function Leaderboard() {
 					))}
 				</tbody>
 			</table>
-			<p className="muted">
-				* speed and token spend are min-max normalized within each run's
-				candidate set.
-			</p>
-
 			<h2>Runs</h2>
 			<table>
 				<thead>
@@ -318,7 +398,13 @@ function Leaderboard() {
 								)}
 							</td>
 							<td>
-								<a href={`/runs/${r.runId}`}>{r.runId}</a>
+								{r.target ?? "—"} — <a href={`/runs/${r.runId}`}>{r.runId}</a>
+								{r.summary && (
+									<span className="muted">
+										{" — "}
+										{new Date(r.summary.startedAt).toLocaleDateString()}
+									</span>
+								)}
 							</td>
 							<td className="muted">{r.summary?.config.provider ?? "—"}</td>
 							<td className="muted">
@@ -329,7 +415,9 @@ function Leaderboard() {
 							<td>
 								{r.supported ? (
 									r.summary?.inconclusive ? (
-										<span className="badge warn">inconclusive ordering</span>
+										<span className="badge warn">
+											no significant difference
+										</span>
 									) : (
 										<span className="badge ok">ok</span>
 									)
@@ -352,6 +440,8 @@ function Leaderboard() {
 function RunView({ runId }: { runId: string }) {
 	const entry = useFetch<{
 		supported: boolean;
+		target?: string;
+		targetInfo?: TargetInfo;
 		error?: string;
 		results?: {
 			config: Record<string, unknown>;
@@ -391,6 +481,12 @@ function RunView({ runId }: { runId: string }) {
 				<a href="/">← leaderboard</a>
 			</p>
 			<h1>{combined ? `Combined run (${parts.length} runs)` : runId}</h1>
+			{entry.targetInfo && (
+				<p className="muted">
+					Bench task: <strong>{entry.targetInfo.name}</strong>
+					{entry.targetInfo.summary && ` — ${entry.targetInfo.summary}`}
+				</p>
+			)}
 			<p className="muted">
 				🗓 {fmt(r.startedAt)} → {fmt(r.endedAt)}
 				{spanMin !== null &&
@@ -415,12 +511,14 @@ function RunView({ runId }: { runId: string }) {
 			)}
 			{r.inconclusive && (
 				<p>
-					<span className="badge warn">
-						top-two composite ranges overlap — ordering inconclusive
+					<span className="badge warn">no significant difference</span>{" "}
+					<span className="muted">
+						the top two scores are closer than the noise band
 					</span>
 				</p>
 			)}
 			<WeightControls weights={weights} onChange={setWeights} />
+			<HowItWorks />
 			<table>
 				<thead>
 					<tr>
@@ -762,5 +860,7 @@ function App() {
 	return <Leaderboard />;
 }
 
-const rootEl = document.getElementById("root");
+// `document` is absent when a test imports this module for its label maps.
+const rootEl =
+	typeof document === "undefined" ? null : document.getElementById("root");
 if (rootEl) createRoot(rootEl).render(<App />);

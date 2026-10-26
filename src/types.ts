@@ -161,6 +161,8 @@ export const RunConfig = z.object({
 	noiseBand: z.number().nonnegative().default(0),
 	infraRetryLimit: z.int().nonnegative().default(2),
 	realIntegrationTier: z.boolean().default(false),
+	/** Eval target (bench task) this run builds: targets/<target>/target.yaml. */
+	target: z.string().default("symphony-daemon"),
 });
 export type RunConfig = z.infer<typeof RunConfig>;
 
