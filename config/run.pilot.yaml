@@ -10,7 +10,7 @@
 #   (d) a noise-band value is recorded
 # Decision owner: Hannes. Results alone do not decide.
 #
-# Worker: deepseek-flash (cheap, drives the bulk); judge: deepseek-v4-pro (CLI forbids worker==judge).
+# Worker: deepseek-flash (cheap, drives the bulk); judge: kimi-k3.1-pro (cross-vendor).
 # Caveat: worker and judge share a vendor — acceptable for the smoke pilot, noted in results.
 # Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree
 
@@ -20,7 +20,7 @@ trialsPerCandidate: 3
 provider: worktree
 harness: claude-code
 workerModel: deepseek-flash
-judgeModel: deepseek-v4-pro
+judgeModel: kimi-k3.1-pro
 
 budget:
   trialWallClockMs: 7200000
