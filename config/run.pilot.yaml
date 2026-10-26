@@ -10,6 +10,8 @@
 #   (d) a noise-band value is recorded
 # Decision owner: Hannes. Results alone do not decide.
 #
+# Worker: deepseek-v4-pro (Anthropic-compatible endpoint); judge: deepseek-flash.
+# Caveat: worker and judge share a vendor — acceptable for the smoke pilot, noted in results.
 # Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree
 
 target: symphony-daemon
@@ -17,8 +19,8 @@ candidates: [egm, gsd]
 trialsPerCandidate: 3
 provider: worktree
 harness: claude-code
-workerModel: claude-opus-4-6
-judgeModel: claude-sonnet-4-6
+workerModel: deepseek-v4-pro
+judgeModel: deepseek-flash
 
 budget:
   trialWallClockMs: 7200000

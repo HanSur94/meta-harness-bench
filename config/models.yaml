@@ -130,6 +130,27 @@ profiles:
     authEnv: DASHSCOPE_API_KEY
     authKind: auth-token
 
+  # --- DeepSeek via Claude Code (Anthropic-compatible endpoint) ---
+  # https://api-docs.deepseek.com/guides/anthropic_api
+  # Claude model names map server-side: claude-opus* -> deepseek-v4-pro,
+  # claude-sonnet*/haiku* -> deepseek-flash. Explicit ids also accepted.
+  # Pricing omitted (tokens-only); add $/Mtok here to enable cost estimates.
+  - name: deepseek-v4-pro
+    provider: deepseek
+    modelId: deepseek-v4-pro
+    transport: claude-code
+    baseUrl: https://api.deepseek.com/anthropic
+    authEnv: DEEPSEEK_API_KEY
+    authKind: auth-token
+
+  - name: deepseek-flash
+    provider: deepseek
+    modelId: deepseek-flash
+    transport: claude-code
+    baseUrl: https://api.deepseek.com/anthropic
+    authEnv: DEEPSEEK_API_KEY
+    authKind: auth-token
+
   # --- OpenAI via the Codex CLI harness (transport: codex) ---
   # Codex is model-agnostic; this profile drives its built-in OpenAI provider.
   # The codex driver runs `codex login --with-api-key` reading $OPENAI_API_KEY.
