@@ -2,6 +2,7 @@
 /**
  * Grade an archived trial post-hoc:
  *   bun scripts/grade-trial.ts <run-dir> <trial-id> [--driver cc|sdk] [--fresh]
+ *     [--judge-model <id>]   default: the run's recorded judge (results.json)
  *
  * Drivers:
  *   cc  (default) — graders hosted on headless Claude Code, billed to the
@@ -80,7 +81,27 @@ if (!targetName)
 const target = loadTarget(targetName);
 console.log(`[grade] target: ${targetName}`);
 const { plan } = target;
-const judgeModel = "claude-sonnet-4-6";
+// Judge resolution: explicit flag > the run's own record > upstream default.
+// ponytail: one judge name for evaluator + both judges; split if evaluator cost matters.
+const judgeFlagIdx = process.argv.indexOf("--judge-model");
+const recordedJudge = (() => {
+	try {
+		const r = JSON.parse(
+			readFileSync(join(runDir, "results.json"), "utf8"),
+		) as {
+			judgeModels?: { codeJudge?: string; specJudge?: string };
+			config?: { judgeModel?: string };
+		};
+		return r.judgeModels?.codeJudge ?? r.config?.judgeModel;
+	} catch {
+		return undefined;
+	}
+})();
+const judgeModel =
+	(judgeFlagIdx >= 0 ? process.argv[judgeFlagIdx + 1] : undefined) ??
+	recordedJudge ??
+	"claude-sonnet-4-6";
+console.log(`[grade] judge model: ${judgeModel}${recordedJudge && judgeModel === recordedJudge ? " (from run record)" : ""}`);
 
 const checkpointFiles = [
 	"evaluator-checkpoint.json",

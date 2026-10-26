@@ -11,7 +11,8 @@
 # Decision owner: Hannes. Results alone do not decide.
 #
 # Worker: deepseek-flash (cheap, drives the bulk); judge: kimi-k3.1-pro (cross-vendor).
-# Caveat: worker and judge share a vendor — acceptable for the smoke pilot, noted in results.
+# Judge route: OpenRouter (moonshotai/kimi-k3.1-pro) — different vendor from the worker.
+# Worker route: DeepSeek API direct (api.deepseek.com/anthropic).
 # Run: bun run src/cli.ts run --config config/run.pilot.yaml --provider worktree
 
 target: symphony-daemon
