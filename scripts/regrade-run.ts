@@ -60,6 +60,25 @@ if (!target) {
 }
 const registry = loadRegistry("config/registry.yaml");
 
+// Judge resolution: --judge-model > the run's own record > upstream default.
+// (Hardcoding here once recorded claude-sonnet-4-6 while OpenRouter served Kimi.)
+const judgeFlagIdx = process.argv.indexOf("--judge-model");
+const recordedJudge = (() => {
+	try {
+		const r = JSON.parse(readFileSync(join(runDir, "results.json"), "utf8")) as {
+			judgeModels?: { codeJudge?: { modelId?: string; name?: string } };
+		};
+		const j = r.judgeModels?.codeJudge;
+		return j?.modelId ?? j?.name;
+	} catch {
+		return undefined;
+	}
+})();
+const judgeModel =
+	(judgeFlagIdx >= 0 ? process.argv[judgeFlagIdx + 1] : undefined) ??
+	recordedJudge ??
+	"claude-sonnet-4-6";
+
 // Built (completed) trials that have no grades.json yet.
 const toGrade: TrialResult[] = trialIds
 	.map((id, i) => ({ id, prov: provs[i] as TrialProvenance }))
@@ -95,14 +114,14 @@ const setState = (over: Partial<RunState>) =>
 	});
 
 setState({ status: "running", stage: "grading", error: null });
-console.log(`regrade ${runId}: ${toGrade.length} trial(s) to grade`);
+console.log(`regrade ${runId}: ${toGrade.length} trial(s) to grade | judge ${judgeModel}`);
 
 if (toGrade.length > 0) {
 	await gradeTrials(toGrade, {
 		target,
 		design: null,
 		registry,
-		judgeModel: "claude-sonnet-4-6",
+		judgeModel,
 		runDir,
 		driver: "cc",
 		log: (m) => console.log(m),
