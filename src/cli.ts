@@ -11,11 +11,14 @@
  *
  *   bun run src/cli.ts run --candidates gsd,superpowers --trials 1 \
  *       [--harness claude-code] [--provider worktree|daytona] [--snapshot harness-eval-base:v4] \
- *       [--target <name>] [--design <name>] [--trial-minutes M] [--grade]
+ *       [--target <name>] [--design <name>] [--trial-minutes M] [--grade] \
+ *       [--spec-only] [--estimate]
  *       Execute the matrix. Builds happen with real Claude Code sessions —
  *       REAL SPEND. --design places a frozen DESIGN.md in each workspace and
  *       (with --grade, on UI targets) scores design adherence. --grade
- *       additionally runs evaluator+judge (API spend).
+ *       additionally runs evaluator+judge (API spend). --spec-only runs only
+ *       the design-tagged steps and (with --grade) scores the spec alone;
+ *       --estimate prints expected spend and exits before any API call.
  *
  *   bun run src/cli.ts report <run-dir> [--weights a,q,s,t[,spec]]
  *       (Re)generate results.json + scorecard.md from stored trials.
@@ -36,6 +39,8 @@ import {
 	costSourceForHarness,
 	judgeWorkerRelation,
 	loadModels,
+	type ModelProfile,
+	priceFromTokens,
 	resolveClaudeCodeEnv,
 	resolveProfile,
 	resolveWorkerEnv,
@@ -52,7 +57,12 @@ import { loadRegistry, resolveCandidates } from "./registry";
 import { writeScorecard } from "./report/markdown";
 import { buildResults, writeResults } from "./report/results";
 import { loadTarget, renderTargetPrompt, scaffoldTarget } from "./targets";
-import { RunConfig, type TrialResult, Weights } from "./types";
+import {
+	type CandidateEntry,
+	RunConfig,
+	type TrialResult,
+	Weights,
+} from "./types";
 
 const REGISTRY_PATH = "config/registry.yaml";
 const MANIFEST_PATH = "config/fixtures-manifest.yaml";
@@ -114,6 +124,66 @@ async function cmdCatalog(): Promise<void> {
 	console.log(`wrote ${CATALOG_PATH} (${md.split("\n").length} lines)`);
 }
 
+interface EstimateInput {
+	defaults: Record<string, unknown>;
+	config: RunConfig;
+	candidates: CandidateEntry[];
+	workerProfile: ModelProfile;
+	judgeProfile: ModelProfile;
+}
+
+/**
+ * --estimate dry run: expected spend before any API call. Tokens come from the
+ * advisory per-harness historical medians in run.defaults.yaml and are never
+ * measured by the run. A missing median or missing profile pricing is reported
+ * as advisory/unavailable rather than invented.
+ */
+function printEstimate(input: EstimateInput): void {
+	const est =
+		(input.defaults.estimate as Record<string, unknown> | undefined) ?? {};
+	const perHarness =
+		(est.perHarnessTokens as Record<string, number> | undefined) ?? {};
+	const judgePassTokens = Number(est.judgePassTokens ?? 0);
+	const judgePassesPerTrial = Number(est.judgePassesPerTrial ?? 2);
+	const inputShare = Number(est.inputShare ?? 0.8);
+	const workerTokens = perHarness[input.config.harness];
+	const trials = input.candidates.length * input.config.trialsPerCandidate;
+	const price = (profile: ModelProfile, tokens: number): number | null =>
+		priceFromTokens(profile, tokens * inputShare, tokens * (1 - inputShare));
+	const usd = (n: number | null) =>
+		n === null ? "n/a (no profile pricing — tokens-only)" : `$${n.toFixed(2)}`;
+
+	console.log("estimate (dry run — no API calls, no sandbox):");
+	console.log(
+		`  ${input.candidates.length} candidate(s) × ${input.config.trialsPerCandidate} trial(s) = ${trials} trial(s) on ${input.config.harness}`,
+	);
+	let workerUsd: number | null = null;
+	if (workerTokens === undefined) {
+		console.log(
+			`  worker: n/a — no historical median for harness '${input.config.harness}' (advisory)`,
+		);
+	} else {
+		workerUsd = price(input.workerProfile, workerTokens * trials);
+		console.log(
+			`  worker: ${(workerTokens * trials).toLocaleString()} tokens ≈ ${usd(workerUsd)} (advisory median)`,
+		);
+	}
+	const judgeTotal = judgePassTokens * judgePassesPerTrial * trials;
+	const judgeUsd = price(input.judgeProfile, judgeTotal);
+	console.log(
+		`  judge: ${judgeTotal.toLocaleString()} tokens ≈ ${usd(judgeUsd)} (advisory median)`,
+	);
+	console.log(
+		workerUsd === null || judgeUsd === null
+			? "  total: n/a — no profile pricing for at least one model; add pricing to config/models.yaml or read tokens as the basis."
+			: `  total ≈ $${(workerUsd + judgeUsd).toFixed(2)} — advisory: historical medians, not measured by this run.`,
+	);
+	if (input.config.specOnly)
+		console.log(
+			"  note: spec-only runs fewer steps than a full run; this estimate is an upper bound.",
+		);
+}
+
 async function cmdRun(): Promise<void> {
 	const harnesses = loadHarnesses();
 	const registry = loadRegistry(REGISTRY_PATH, harnesses);
@@ -150,8 +220,13 @@ async function cmdRun(): Promise<void> {
 			arg("concurrency") ?? (defaults.concurrency as number | undefined) ?? 2,
 		),
 		...(arg("judge-model") ? { judgeModel: arg("judge-model") } : {}),
+		...(flag("spec-only") ? { specOnly: true } : {}),
 		budget,
 	});
+	if (config.specOnly && !flag("grade"))
+		console.log(
+			"⚠ spec-only run without --grade: no specQuality scores will be produced",
+		);
 	const candidates = resolveCandidates(
 		registry,
 		config.candidates,
@@ -169,6 +244,19 @@ async function cmdRun(): Promise<void> {
 		arg("worker-model") ?? config.model,
 		models,
 	);
+	const judgeProfile = resolveProfile(config.judgeModel, models);
+	// --estimate: expected spend only. Stop before any sandbox/API call — the
+	// figure comes from advisory historical medians in run.defaults.yaml.
+	if (flag("estimate")) {
+		printEstimate({
+			defaults,
+			config,
+			candidates,
+			workerProfile,
+			judgeProfile,
+		});
+		return;
+	}
 	// Single shared resolver (codex/oauth/api-key/third-party/native) — identical
 	// to the studio run path so they can't drift.
 	const rw = resolveWorkerEnv(workerProfile);
@@ -184,7 +272,6 @@ async function cmdRun(): Promise<void> {
 
 	// Judge-validity guardrail (model-registry): judge must differ from worker;
 	// cross-vendor judging is allowed but flagged as a bias caveat.
-	const judgeProfile = resolveProfile(config.judgeModel, models);
 	const { crossVendor } = judgeWorkerRelation(workerProfile, judgeProfile);
 	if (crossVendor) {
 		console.log(
@@ -286,6 +373,7 @@ async function cmdRun(): Promise<void> {
 			judgeModel: config.judgeModel,
 			runDir,
 			driver,
+			specOnly: config.specOnly,
 			log: (m) => console.log(m),
 		});
 	}
@@ -451,7 +539,11 @@ async function cmdCleanup(): Promise<void> {
 		{
 			binary: "docker",
 			listArgs: ["ps", "-a", "--format", "{{.Names}}"],
-			parse: (o: string) => o.split("\n").map((s) => s.trim()).filter(Boolean),
+			parse: (o: string) =>
+				o
+					.split("\n")
+					.map((s) => s.trim())
+					.filter(Boolean),
 			reapProcesses: undefined as undefined | ((n: string) => Promise<number>),
 		},
 		{

@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { noiseBand, rankGaps } from "../grading/scoring";
-import type { DimensionStats, RunResults } from "../types";
+import type { Dimension, DimensionStats, RunResults } from "../types";
 
 function fmtMs(ms: number): string {
 	return `${(ms / 60000).toFixed(1)}m`;
@@ -66,9 +66,14 @@ export function renderScorecard(r: RunResults): string {
 	lines.push(
 		"|---|-----------|-----------|---------------------|--------------------|--------------------|---------------|---------------------|--------|-------|",
 	);
+	// Spec-only: only specQuality is scored; the other axes are n/a, not zero.
+	const dim = (s: (typeof r.scores)[number], d: Dimension) =>
+		r.mode === "spec-only" && d !== "specQuality"
+			? "n/a"
+			: String(s.dimensions[d]);
 	r.scores.forEach((s, i) => {
 		lines.push(
-			`| ${i + 1} | **${s.candidate}** | **${s.composite}** | ${s.dimensions.prdAdherence} | ${s.dimensions.codeQuality} | ${s.dimensions.specQuality} | ${s.dimensions.speed} | ${s.dimensions.tokenSpend} | ${s.trialsCounted} | ${s.rightCensored ? "right-censored (capped trials)" : ""} |`,
+			`| ${i + 1} | **${s.candidate}** | **${s.composite}** | ${dim(s, "prdAdherence")} | ${dim(s, "codeQuality")} | ${dim(s, "specQuality")} | ${dim(s, "speed")} | ${dim(s, "tokenSpend")} | ${s.trialsCounted} | ${s.rightCensored ? "right-censored (capped trials)" : ""} |`,
 		);
 	});
 	lines.push("");
@@ -94,10 +99,14 @@ export function renderScorecard(r: RunResults): string {
 	for (const s of r.scores) {
 		lines.push(`### ${s.candidate}`);
 		lines.push("");
-		lines.push(
-			`- **PRD adherence** (Graded Score 0–100): ${fmtStats(s.stats.prdAdherence)}`,
-		);
-		lines.push(`- **Code quality** (0–100): ${fmtStats(s.stats.codeQuality)}`);
+		if (r.mode !== "spec-only") {
+			lines.push(
+				`- **PRD adherence** (Graded Score 0–100): ${fmtStats(s.stats.prdAdherence)}`,
+			);
+			lines.push(
+				`- **Code quality** (0–100): ${fmtStats(s.stats.codeQuality)}`,
+			);
+		}
 		lines.push(
 			`- **Spec quality** (0–100, mean of 5 criterion medians ×10): ${fmtStats(s.stats.specQuality)}`,
 		);

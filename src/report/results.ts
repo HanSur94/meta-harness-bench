@@ -15,10 +15,20 @@ import {
 
 type Phase = "design" | "build" | "setup";
 
-/** Bucket one trial's sessions into design/build/setup (untagged step = setup). */
+/** Bucket one trial's spend by phase. Prefers the trial-level phase buckets
+ *  recorded by aggregateTelemetry; falls back to the session-script derivation
+ *  for pre-Phase-D documents (same result, just re-parsed). */
 function phaseCosts(
 	trial: TrialResult,
 ): Record<Phase, { usd: number; tokens: number }> {
+	const recorded = trial.telemetry?.phases;
+	if (recorded) {
+		return {
+			design: { usd: recorded.design.costUsd, tokens: recorded.design.tokens },
+			build: { usd: recorded.build.costUsd, tokens: recorded.build.tokens },
+			setup: { usd: recorded.setup.costUsd, tokens: recorded.setup.tokens },
+		};
+	}
 	const out: Record<Phase, { usd: number; tokens: number }> = {
 		design: { usd: 0, tokens: 0 },
 		build: { usd: 0, tokens: 0 },
@@ -86,7 +96,17 @@ export interface BuildResultsInput {
  * snapshotIds. Keyed by candidate/harness/model for cross-run comparison.
  */
 export function buildResults(input: BuildResultsInput): RunResults {
-	const weights = input.weights ?? input.config.weights;
+	// Spec-only: specQuality is the only scored dimension, so normalize its
+	// weight to 1.0 (others 0 = n/a; never "0 points" for an ungraded axis).
+	const weights: Weights = input.config.specOnly
+		? {
+				prdAdherence: 0,
+				codeQuality: 0,
+				specQuality: 1,
+				speed: 0,
+				tokenSpend: 0,
+			}
+		: (input.weights ?? input.config.weights);
 	// Reconcile the embedded config with the resolved worker model so
 	// `config.model` agrees with workerModel/provenance instead of keeping its
 	// default while --worker-model is in effect (also fixes re-reported runs).
@@ -112,7 +132,8 @@ export function buildResults(input: BuildResultsInput): RunResults {
 		.filter(
 			(t) =>
 				t.provenance.status === "infra-failed" ||
-				t.provenance.status === "skipped:budget",
+				t.provenance.status === "skipped:budget" ||
+				t.provenance.status === "skipped:ineligible",
 		)
 		.map((t) => ({
 			trialId: t.provenance.trialId,

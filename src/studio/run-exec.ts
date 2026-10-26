@@ -246,6 +246,7 @@ export async function executeRun(
 				onStage: (stage) => onUpdate({ stage }),
 				// Grade on the Claude Code subscription, not the Anthropic API account.
 				driver: "cc",
+				specOnly: inp.config.specOnly,
 			});
 		}
 

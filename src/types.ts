@@ -23,6 +23,8 @@ export const TrialStatus = z.enum([
 	"capped",
 	"infra-failed",
 	"skipped:budget",
+	/** Candidate has no design-tagged steps: excluded from spec-only cells. */
+	"skipped:ineligible",
 ]);
 export type TrialStatus = z.infer<typeof TrialStatus>;
 
@@ -185,6 +187,19 @@ export const SessionRecord = z.object({
 });
 export type SessionRecord = z.infer<typeof SessionRecord>;
 
+/** Meta-harness phase buckets. Untagged steps, install and continuation
+ * traffic all count as setup. */
+export const Phase = z.enum(["design", "build", "setup"]);
+export type Phase = z.infer<typeof Phase>;
+
+/** One phase's duration + spend, carried at trial level (Phase D). */
+export const PhaseTelemetry = z.object({
+	durationMs: z.int().nonnegative(),
+	costUsd: z.number().nonnegative(),
+	tokens: z.int().nonnegative(),
+});
+export type PhaseTelemetry = z.infer<typeof PhaseTelemetry>;
+
 export const TrialTelemetry = z.object({
 	sessions: z.array(SessionRecord),
 	/** Agent working time only; setup/install/grading excluded per spec. */
@@ -193,6 +208,14 @@ export const TrialTelemetry = z.object({
 	totalCostUsd: z.number().nonnegative(),
 	totalTokens: TokenUsage,
 	totalTurns: z.int().nonnegative(),
+	/** Per-phase design/build/setup buckets; absent on pre-Phase-D documents. */
+	phases: z
+		.object({
+			design: PhaseTelemetry,
+			build: PhaseTelemetry,
+			setup: PhaseTelemetry,
+		})
+		.optional(),
 });
 export type TrialTelemetry = z.infer<typeof TrialTelemetry>;
 

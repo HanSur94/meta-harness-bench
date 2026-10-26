@@ -11,6 +11,7 @@ import type {
 	CandidateEntry,
 	Registry,
 	RunConfig,
+	SessionStep,
 	TrialProvenance,
 	TrialResult,
 	TrialStatus,
@@ -202,12 +203,22 @@ function skippedResult(
 	config: RunConfig,
 	deps: SchedulerDeps,
 	reason: string,
+	status: TrialStatus = "skipped:budget",
 ): TrialResult {
-	const provenance = baseProvenance(plan, config, deps, "skipped:budget");
+	const provenance = baseProvenance(plan, config, deps, status);
 	provenance.endedAt = provenance.startedAt;
 	provenance.notes.push(reason);
 	persistProvenance(deps.runDir, provenance);
 	return { provenance, telemetry: null, grades: null };
+}
+
+/** Spec-only runs execute design-tagged steps only: untagged setup steps are
+ *  skipped and build steps never run. Filtering to design steps is the stop
+ *  rule "through the last design step" for the registry's design→build order;
+ *  an untagged/build step sandwiched between design steps is skipped too, which
+ *  keeps spec-only runs code-free. Empty result = candidate ineligible. */
+export function specOnlySteps(script: SessionStep[]): SessionStep[] {
+	return script.filter((s) => s.phase === "design");
 }
 
 export async function runTrial(
@@ -219,6 +230,22 @@ export async function runTrial(
 	const exec = deps.executeScript ?? executeSessionScript;
 	const archive = deps.archive ?? archiveTrial;
 	const driver = deps.driver ?? getHarnessDriver(config.harness);
+	const script = renderSessionScript(
+		deps.registry,
+		plan.candidate,
+		config.harness,
+	);
+	// Zero design-tagged steps: the candidate has no spec-only cell. Run nothing
+	// (no sandbox, no install, no API spend) and record why.
+	if (config.specOnly && specOnlySteps(script).length === 0) {
+		return skippedResult(
+			plan,
+			config,
+			deps,
+			"no design-tagged steps; excluded from spec-only cell",
+			"skipped:ineligible",
+		);
+	}
 	const provenance = baseProvenance(plan, config, deps, "running");
 	const trialDir = join(deps.runDir, "trials", plan.trialId);
 	mkdirSync(trialDir, { recursive: true });
@@ -261,11 +288,6 @@ export async function runTrial(
 			}
 			const setupDurationMs = Date.now() - setupStart;
 
-			const script = renderSessionScript(
-				deps.registry,
-				plan.candidate,
-				config.harness,
-			);
 			// Worker auth: the only secret that enters the sandbox. A resolved
 			// model-registry profile (deps.workerEnv) takes precedence; otherwise
 			// fall back to the native rule — prefer the subscription OAuth token,
@@ -286,17 +308,22 @@ export async function runTrial(
 				}
 			}
 			deps.onStage?.(plan.trialId, "building");
+			const steps = config.specOnly ? specOnlySteps(script) : script;
 			const result = await exec(sandbox, {
 				driver,
 				model: deps.workerModelFlag ?? config.model,
-				steps: script,
+				steps,
 				continuation: setup.continuation,
 				wallClockBudgetMs: config.budget.trialWallClockMs,
 				costBudgetUsd: config.budget.trialCostUsd,
 				env: workerAuth,
 			});
 
-			const telemetry = aggregateTelemetry(result.records, setupDurationMs);
+			const telemetry = aggregateTelemetry(
+				result.records,
+				setupDurationMs,
+				steps,
+			);
 			ledger.add(telemetry.totalCostUsd);
 			deps.onStage?.(plan.trialId, "archiving");
 			await archive(sandbox, trialDir, result.transcripts);

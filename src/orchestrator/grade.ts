@@ -39,6 +39,8 @@ export interface GradeOptions {
 	 *  directly (billed to the API account). Default cc so a $0 API balance never
 	 *  blocks grading a run the subscription already built. */
 	driver?: "cc" | "sdk";
+	/** Spec-only run: grade the spec judge alone — there is no code to evaluate. */
+	specOnly?: boolean;
 	/** Per-trial grading budget. A trial that exceeds it is left ungraded (with a
 	 *  note) and grading continues — one slow trial never fails the whole run.
 	 *  Default 60 min/trial. */
@@ -46,7 +48,11 @@ export interface GradeOptions {
 }
 
 /** Reject if `p` does not settle within `ms`. */
-function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(
+	p: Promise<T>,
+	ms: number,
+	message: string,
+): Promise<T> {
 	let timer: ReturnType<typeof setTimeout>;
 	const timeout = new Promise<never>((_, reject) => {
 		timer = setTimeout(() => reject(new Error(message)), ms);
@@ -82,6 +88,42 @@ export async function gradeTrials(
 		const workspace = join(trialDir, "workspace");
 		if (!existsSync(workspace)) continue;
 		log(`grading ${trialId}…`);
+		// Spec-only: the spec judge reads the raw design artifacts and nothing
+		// else. No evaluator, no code judge, no app boot — there is no code.
+		if (opts.specOnly) {
+			opts.onStage?.(`scoring ${trialId} (${idx + 1}/${total})`);
+			let specQuality: Awaited<ReturnType<typeof judgeSpec>> | null = null;
+			try {
+				const entry = registry.candidates.find(
+					(c) => c.id === trial.provenance.candidate,
+				);
+				specQuality = await judgeSpec({
+					model: judgeModel,
+					workspaceDir: workspace,
+					markerPaths: entry?.markerPaths ?? [],
+				});
+				log(
+					`  spec quality: ${specQuality.overall} (${specQuality.note ?? "scored"})`,
+				);
+			} catch (err) {
+				const note = `spec judging incomplete: ${String(err).slice(0, 140)}`;
+				log(`  ${trialId}: ${note}`);
+				trial.provenance.notes.push(note);
+			}
+			trial.grades = {
+				trialId,
+				adherence: null,
+				quality: null,
+				specQuality,
+				integration: null,
+				designAdherence: null,
+			};
+			writeFileSync(
+				join(trialDir, "grades.json"),
+				JSON.stringify(trial.grades, null, 2),
+			);
+			continue;
+		}
 		opts.onStage?.(`evaluating ${trialId} (${idx + 1}/${total})`);
 		mockPort++;
 		const fixtures = startFixtures(target, mockPort);

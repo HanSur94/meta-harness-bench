@@ -29,6 +29,18 @@ noiseBand: 0
 # Spec-only mode: run through the last design step and score the spec alone.
 specOnly: false
 
+# --estimate advisory medians (dry-run only — NEVER measured by the run).
+# Tokens per candidate trial from historical runs. Placeholder values; replace
+# with real medians after the pilot. Missing harness → estimate marked advisory.
+estimate:
+  perHarnessTokens:
+    claude-code: 900000
+    codex: 700000
+    zerocode: 650000
+  judgePassTokens: 12000      # tokens per judge pass (3 samples × 600-token budget)
+  judgePassesPerTrial: 2      # spec judge + code judge
+  inputShare: 0.8             # share of expected tokens billed as input
+
 # Decision (a): /ce-compound is EXCLUDED from Compound Engineering's session
 #   script — it benefits future runs, not the artifact under grading.
 #   (Enforced in config/registry.yaml: no /ce-compound step.)
