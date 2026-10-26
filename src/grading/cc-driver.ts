@@ -123,7 +123,14 @@ export async function captureSession(
 
 export async function runCC(opts: CCRunOptions): Promise<string> {
 	const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-	if (!token) throw new Error("CLAUDE_CODE_OAUTH_TOKEN is not set");
+	// Non-Anthropic route (e.g. DeepSeek's Anthropic-compatible endpoint):
+	// when ANTHROPIC_BASE_URL is set, pass the base URL + key through instead
+	// of requiring a Max OAuth token.
+	const externalBase = process.env.ANTHROPIC_BASE_URL;
+	if (!token && !externalBase)
+		throw new Error(
+			"neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_BASE_URL is set",
+		);
 	const promptDir = mkdtempSync(join(tmpdir(), "he-prompt-"));
 	const promptFile = join(promptDir, "prompt.txt");
 	writeFileSync(promptFile, opts.prompt);
@@ -138,12 +145,19 @@ export async function runCC(opts: CCRunOptions): Promise<string> {
 	const { output, exitCode, timedOut } = await captureSession(shellCmd, {
 		cwd: opts.cwd,
 		timeoutMs: opts.timeoutMs,
-		env: {
-			...opts.env,
-			CLAUDE_CODE_OAUTH_TOKEN: token,
-			// Never bill the API account from the grading path.
-			ANTHROPIC_API_KEY: "",
-		},
+		env: externalBase
+			? {
+					...opts.env,
+					ANTHROPIC_BASE_URL: externalBase,
+					ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ?? "",
+					ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
+				}
+			: {
+					...opts.env,
+					CLAUDE_CODE_OAUTH_TOKEN: token ?? "",
+					// Never bill the API account from the grading path.
+					ANTHROPIC_API_KEY: "",
+				},
 	});
 	try {
 		rmSync(promptDir, { recursive: true, force: true });
