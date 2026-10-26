@@ -307,13 +307,14 @@ candidates:
           - claude plugin install egm@egm
           - "claude plugin list | grep -q 'egm@'"
         session:
-          - prompt: "/egm:egm-brainstorm {{BASE_PROMPT}}"
+          # Headless adaptation: EGM's brainstorm/draft are interactive by
+          # design (human interview + section approval gates). The trial prompt
+          # supplies the interview input (the PRD) and forbids gates.
+          - prompt: "/egm:egm-draft {{PRD_FILE}} — treat {{PRD_FILE}} as the complete concepts brief and interview record. Do NOT ask questions and do NOT stop for section approval. Write the complete design document in one pass to docs/designs/design.md using the skill's section order. When the file is written, stop."
             phase: design
-          - prompt: "/egm:egm-draft"
+          - prompt: "/egm:egm-review docs/designs/design.md — run the consolidated uninterrupted review (no interactive gates). Write the review reports. Do not apply fixes. Then stop."
             phase: design
-          - prompt: "/egm:egm-review docs/designs/<feature>.md (the design doc just drafted; <feature> is the eval target slug)"
-            phase: design
-          - prompt: "Implement the design in docs/designs/<feature>.md exactly as specified, where <feature> is the eval target slug."
+          - prompt: "Implement the design in docs/designs/design.md exactly as specified. {{PRD_FILE}} holds the requirements."
             phase: build
             newSession: true
         continuation:
