@@ -33,3 +33,4 @@ fixtures:
     # Not a long-running process: path handed to the evaluator via env.
     pathOnly: "{targetDir}/fixtures/stub-app-server.ts"
     envVar: STUB_APP_SERVER
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

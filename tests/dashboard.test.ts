@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { DIM_LABELS, HELP } from "../src/dashboard/app";
 import { loadRunIndex, targetForRun } from "../src/dashboard/data";
+import { EVAL_CLASS_LABEL, EVAL_CLASS_HELP } from "../src/dashboard/app";
 import { composite } from "../src/grading/scoring";
 import { buildResults } from "../src/report/results";
 import { RunConfig, RunResults } from "../src/types";
@@ -128,6 +129,13 @@ describe("bench task naming (dashboard tasks 1 + 5)", () => {
 });
 
 describe("dashboard wording (STE labels + help)", () => {
+	test("bench class flows from the manifest to the dashboard label", () => {
+		const info = targetForRun("symphony-daemon", "0".repeat(64));
+		expect(info.evalClass).toBe("hybrid");
+		expect(EVAL_CLASS_LABEL[info.evalClass]).toMatch(/tests/);
+		expect(EVAL_CLASS_HELP[info.evalClass]).toMatch(/tests/i);
+	});
+
 	test("every dimension has a plain label with matching help", () => {
 		expect(Object.keys(DIM_LABELS)).toEqual([
 			"prdAdherence",

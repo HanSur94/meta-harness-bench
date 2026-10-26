@@ -8,6 +8,8 @@ export interface TargetInfo {
 	name: string;
 	summary: string;
 	description: string;
+	/** Bench class badge: deterministic, judged, or hybrid. */
+	evalClass: "deterministic" | "judged" | "hybrid";
 }
 
 export interface RunIndexEntry {
@@ -37,8 +39,13 @@ export function targetForRun(
 	const { byName, bySha } = loadTargetCatalog(targetsDir);
 	const hit = bySha.get(prdSha256) ?? byName.get(target);
 	return hit
-		? { name: hit.name, summary: hit.summary, description: hit.description }
-		: { name: target, summary: "", description: "" };
+		? {
+				name: hit.name,
+				summary: hit.summary,
+				description: hit.description,
+				evalClass: hit.evalClass,
+			}
+		: { name: target, summary: "", description: "", evalClass: "hybrid" };
 }
 
 // v1 = historical passthrough (normalized on read), v2 = current.

@@ -33,6 +33,24 @@ interface RunSummary {
 
 /* ------------------------------------------------------------ shared bits */
 
+/** Bench class: how the score for this task is produced. */
+export const EVAL_CLASS_LABEL: Record<"deterministic" | "judged" | "hybrid", string> = {
+	deterministic: "tests only",
+	judged: "judge only",
+	hybrid: "tests + judge",
+};
+export const EVAL_CLASS_HELP: Record<
+	"deterministic" | "judged" | "hybrid",
+	string
+> = {
+	deterministic:
+		"The score comes from running tests. No model judges. Repeatable.",
+	judged:
+		"The score comes from a judge model that reads the work. Not repeatable.",
+	hybrid:
+		"Part of the score comes from running tests, part from a judge model.",
+};
+
 export const DIM_LABELS: Record<string, string> = {
 	prdAdherence: "Meets the task spec",
 	codeQuality: "Code quality",
@@ -230,7 +248,10 @@ function Leaderboard() {
 		...new Map(
 			active.map((r) => [
 				r.targetInfo?.name ?? r.target ?? "unknown",
-				r.targetInfo?.summary ?? "",
+				{
+					summary: r.targetInfo?.summary ?? "",
+					evalClass: r.targetInfo?.evalClass ?? "hybrid",
+				},
 			]),
 		).entries(),
 	];
@@ -309,11 +330,14 @@ function Leaderboard() {
 			{benchTasks.length > 0 && (
 				<p className="muted">
 					Bench task{benchTasks.length === 1 ? "" : "s"}:{" "}
-					{benchTasks.map(([name, summary], i) => (
+					{benchTasks.map(([name, info], i) => (
 						<span key={name}>
 							{i > 0 && " · "}
-							<strong>{name}</strong>
-							{summary && ` — ${summary}`}
+							<strong>{name}</strong>{" "}
+							<span className="badge" title={EVAL_CLASS_HELP[info.evalClass]}>
+								{EVAL_CLASS_LABEL[info.evalClass]}
+							</span>
+							{info.summary && ` — ${info.summary}`}
 						</span>
 					))}
 				</p>

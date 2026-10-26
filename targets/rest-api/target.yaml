@@ -39,3 +39,4 @@ source:
     Adapted from the ViBench `logistics` marketing-site PRD into an API-only
     service (calculation engine + capture/persist/list flows reframed as JSON
     endpoints; UI/DOM scope dropped).
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

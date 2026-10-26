@@ -46,3 +46,4 @@ source:
     reframed as JSON endpoints. UI/DOM, offline/localStorage persistence, and the
     delete-confirmation handshake were dropped; the status, ordering, and
     aggregation rules are preserved verbatim.
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

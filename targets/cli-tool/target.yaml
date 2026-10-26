@@ -27,3 +27,4 @@ deliverableNotes: >
   Section 4 is the Definition of Done. Section 5 lists non-goals; do not
   build them. Match POSIX `wc` semantics exactly where the spec says so.
 fixtures: []
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

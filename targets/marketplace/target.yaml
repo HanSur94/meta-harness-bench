@@ -46,3 +46,4 @@ deliverableNotes: >
   available → pending (checkout) → sold (confirm) or → available (cancel).
   In-process persistence is acceptable.
 fixtures: []
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

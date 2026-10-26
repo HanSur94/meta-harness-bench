@@ -45,3 +45,4 @@ deliverableNotes: >
   status to another column; it appends to the end of the target column.
   In-process persistence is acceptable.
 fixtures: []
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

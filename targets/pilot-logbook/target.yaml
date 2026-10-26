@@ -46,3 +46,4 @@ deliverableNotes: >
   (uppercase, spaces/hyphens removed) but the original formatting is preserved.
   In-process persistence is acceptable.
 fixtures: []
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

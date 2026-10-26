@@ -45,3 +45,4 @@ deliverableNotes: >
   Derived `title`/`preview` rules and the `YYYY-MM-DD hh:mm` UTC `updatedAt`
   format are graded exactly. In-process persistence is acceptable.
 fixtures: []
+evalClass: hybrid  # deterministic test plan + judged code/spec quality

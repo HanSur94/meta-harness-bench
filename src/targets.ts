@@ -81,6 +81,11 @@ export const TargetManifest = z.object({
 	 * adherence scoring rather than reporting a misleading zero.
 	 */
 	ui: z.boolean().optional(),
+	/**
+	 * Bench class: deterministic (pass/fail from execution), judged (rubric LLM),
+	 * or hybrid (both). Declared per target; the dashboard shows a badge.
+	 */
+	evalClass: z.enum(["deterministic", "judged", "hybrid"]).default("hybrid"),
 });
 export type TargetManifest = z.infer<typeof TargetManifest>;
 
@@ -92,6 +97,7 @@ export interface TargetCatalogEntry {
 	summary: string;
 	description: string;
 	prdSha256: string;
+	evalClass: "deterministic" | "judged" | "hybrid";
 }
 
 /**
@@ -121,6 +127,7 @@ export function loadTargetCatalog(targetsDir = "targets"): {
 				summary: m.summary,
 				description: m.description,
 				prdSha256: m.prdSha256,
+				evalClass: m.evalClass,
 			};
 			byName.set(m.name, entry);
 			bySha.set(m.prdSha256, entry);
