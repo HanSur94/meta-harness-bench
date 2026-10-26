@@ -209,7 +209,11 @@ export async function judgeCriteria(
 ): Promise<{ judgeModel: string; criteria: JudgedCriterion[] }> {
 	const client =
 		opts.client ??
-		new Anthropic({ apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY });
+		new Anthropic(
+			process.env.ANTHROPIC_AUTH_TOKEN
+				? { authToken: process.env.ANTHROPIC_AUTH_TOKEN }
+				: { apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY },
+		);
 	const samples = opts.samples ?? 3;
 	const criteria: JudgedCriterion[] = [...(opts.preScored ?? [])];
 	const done = new Set(criteria.map((c) => c.criterion));

@@ -158,16 +158,15 @@ profiles:
       inputPerMtokUsd: 0.30
       outputPerMtokUsd: 1.20
 
-  # --- Kimi K3.1 Pro via Claude Code (Anthropic-compatible endpoint) ---
-  # https://platform.kimi.ai/docs/guide/claude-code-kimi
-  # Model id on the Anthropic endpoint: kimi-k3.1-pro (highspeed variant exists).
+  # --- Kimi K3.1 Pro via OpenRouter (Anthropic-compatible /api/v1/messages) ---
+  # ANTHROPIC_BASE_URL=https://openrouter.ai/api ; bearer token ; ANTHROPIC_API_KEY must be empty.
   # Cross-vendor judge for a DeepSeek worker (self-preference control).
   - name: kimi-k3.1-pro
-    provider: moonshot
-    modelId: kimi-k3.1-pro
+    provider: openrouter
+    modelId: moonshotai/kimi-k3.1-pro
     transport: claude-code
-    baseUrl: https://api.moonshot.ai/anthropic
-    authEnv: KIMI_API_KEY
+    baseUrl: https://openrouter.ai/api
+    authEnv: OPENROUTER_API_KEY
     authKind: auth-token
     pricing:
       inputPerMtokUsd: 2
