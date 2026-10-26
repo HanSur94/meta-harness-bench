@@ -27,7 +27,7 @@ import { type JudgeCriterion, judgeCriteria } from "./judge";
  * criterion; ambiguity is penalized through the clarity criterion.
  */
 
-export const SPEC_JUDGE_SYSTEM = `You are a senior architect reviewing a framework's design and specification artifacts for a software build task. The artifacts are concatenated at SPEC.md in this directory; each section is headed by its original relative path.
+export const SPEC_JUDGE_SYSTEM = `You are a senior architect reviewing a framework's design and specification artifacts for a software build task. The artifacts are concatenated at SPEC.md in this directory. The FIRST section is the target PRD (headed 'PRD (target requirements)'); the remaining sections are the framework's design/spec artifacts, each headed by its original relative path.
 
 Score ONE rubric criterion from 0-10. Anchors: 0 = the criterion is absent; 10 = fully satisfied. Intermediate values by severity of the gaps. All criteria are higher-is-better. Judge only what the spec says — do not reward length, verbosity, or formatting. Do not assume intent that is not written down. NEVER modify the artifacts.
 
@@ -60,8 +60,13 @@ export const SPEC_CRITERIA: JudgeCriterion[] = [
 	},
 ];
 
-/** Fixed sample budget: at most 600 tokens of artifact text per sample (≈4 chars/token). */
-export const SPEC_SAMPLE_TOKEN_BUDGET = 600;
+/**
+ * Sample budget: at most 24k tokens of input text per sample (≈4 chars/token).
+ * 600 tokens was too small for real design docs (68 KB EGM doc -> truncated
+ * mid-sentence, PRD absent). ponytail: single truncated concatenation; switch
+ * to section-chunked map-reduce if docs regularly exceed ~96 KB.
+ */
+export const SPEC_SAMPLE_TOKEN_BUDGET = 24000;
 const CHARS_PER_TOKEN = 4;
 
 /** Text-ish artifacts; binaries in markerPaths are not spec input. */
@@ -91,8 +96,13 @@ function walk(dir: string, out: string[]): void {
 export function collectSpecArtifacts(
 	workspaceDir: string,
 	markerPaths: string[],
+	prdFile = "SPEC.md",
 ): SpecArtifacts {
 	const paths: string[] = [];
+	// The target PRD goes FIRST: the prdCoverage criterion needs the
+	// requirements to check the design against.
+	const prdPath = join(workspaceDir, prdFile);
+	if (existsSync(prdPath)) paths.push(prdPath);
 	for (const marker of markerPaths) {
 		const target = join(workspaceDir, marker.replace(/\/$/, ""));
 		if (!existsSync(target)) continue;
@@ -108,7 +118,8 @@ export function collectSpecArtifacts(
 			} catch {
 				// unreadable artifact: contributes nothing
 			}
-			return `--- ${relative(workspaceDir, path)} ---\n${body}`;
+			const label = path === prdPath ? `PRD (target requirements): ${relative(workspaceDir, path)}` : relative(workspaceDir, path);
+			return `--- ${label} ---\n${body}`;
 		})
 		.join("\n\n")
 		.slice(0, SPEC_SAMPLE_TOKEN_BUDGET * CHARS_PER_TOKEN);
