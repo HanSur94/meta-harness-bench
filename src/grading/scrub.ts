@@ -20,7 +20,13 @@ export function scrubWorkspace(
 	allCandidates: CandidateEntry[],
 ): string[] {
 	rmSync(blindDir, { recursive: true, force: true });
-	cpSync(workspaceDir, blindDir, { recursive: true });
+	// Skip installed dependencies and VCS history: the judge reads source, and
+	// copying them made every judged trial cost dollars (2026-10-26 pilot).
+	const SKIP = new Set(["node_modules", ".git", ".venv", "__pycache__"]);
+	cpSync(workspaceDir, blindDir, {
+		recursive: true,
+		filter: (src) => !SKIP.has(src.split("/").pop() ?? ""),
+	});
 	const removed: string[] = [];
 	const markers = new Set<string>([
 		...allCandidates.flatMap((c) => c.markerPaths),
